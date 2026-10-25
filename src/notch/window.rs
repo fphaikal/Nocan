@@ -2,7 +2,7 @@ use windows::core::{Result, PCWSTR};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Direct2D::Common::{D2D1_COLOR_F, D2D_RECT_F};
 use windows::Win32::Graphics::Direct2D::ID2D1SolidColorBrush;
-use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTOPRIMARY};
+use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTOPRIMARY, ScreenToClient};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT};
 use windows::Win32::UI::Shell::{
@@ -11,12 +11,12 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    DispatchMessageW, GetCursorPos, GetMessageW, LoadIconW, PostQuitMessage,
-    RegisterClassExW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-    TrackPopupMenu, TranslateMessage, GWLP_USERDATA, HWND_TOPMOST, IDI_APPLICATION,
-    MF_SEPARATOR, MF_STRING, MSG, SWP_NOACTIVATE, SW_SHOW, SW_SHOWNOACTIVATE, TPM_BOTTOMALIGN,
-    TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_DESTROY, WM_DROPFILES, WM_LBUTTONDOWN,
-    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONUP, WM_TIMER,
+    DispatchMessageW, GetCursorPos, GetMessageW, LoadCursorW, LoadIconW, PostQuitMessage,
+    RegisterClassExW, SetCursor, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+    TrackPopupMenu, TranslateMessage, GWLP_USERDATA, HTCLIENT, HWND_TOPMOST, IDC_ARROW, IDC_HAND,
+    IDI_APPLICATION, MF_SEPARATOR, MF_STRING, MSG, SWP_NOACTIVATE, SW_SHOW, SW_SHOWNOACTIVATE,
+    TPM_BOTTOMALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_DESTROY, WM_DROPFILES, WM_LBUTTONDOWN,
+    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONUP, WM_SETCURSOR, WM_TIMER,
     WM_USER, WNDCLASSEXW, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW,
     WS_EX_TOPMOST, WS_POPUP,
 };
@@ -84,7 +84,7 @@ impl NotchWindow {
             cbWndExtra: 0,
             hInstance: hinstance,
             hIcon: windows::Win32::UI::WindowsAndMessaging::HICON::default(),
-            hCursor: windows::Win32::UI::WindowsAndMessaging::HCURSOR::default(),
+            hCursor: unsafe { LoadCursorW(None, IDC_ARROW).unwrap_or_default() },
             hbrBackground: windows::Win32::Graphics::Gdi::HBRUSH::default(),
             lpszMenuName: PCWSTR::null(),
             lpszClassName: PCWSTR(class_name.as_ptr()),
@@ -503,6 +503,95 @@ impl NotchWindow {
             self.dwrite.draw_text(&self.d2d.context, &bat_str, bat_rect, dim_brush, &self.dwrite.format_small);
         }
     }
+
+    pub fn is_interactive_at(&self, x: f32, y: f32) -> bool {
+        if !self.is_hovered {
+            return false;
+        }
+
+        // Chevrons
+        if self.carousel.nav.hit_test_prev(self.current_w, self.current_h, x, y)
+            || self.carousel.nav.hit_test_next(self.current_w, self.current_h, x, y)
+        {
+            return true;
+        }
+
+        // Dots
+        if self.carousel.dots.hit_test(self.current_w, self.current_h, x, y).is_some() {
+            return true;
+        }
+
+        let sec_bounds = D2D_RECT_F {
+            left: 0.0,
+            top: 0.0,
+            right: self.current_w,
+            bottom: self.current_h,
+        };
+
+        match self.carousel.current_section {
+            0 => {
+                // Music controls
+                let ctrl_center_x = sec_bounds.left + 210.0;
+                let ctrl_y = sec_bounds.top + 98.0;
+                if y >= ctrl_y - 5.0 && y <= ctrl_y + 25.0 {
+                    if (x >= ctrl_center_x - 60.0 && x <= ctrl_center_x - 25.0)
+                        || (x >= ctrl_center_x - 20.0 && x <= ctrl_center_x + 20.0)
+                        || (x >= ctrl_center_x + 25.0 && x <= ctrl_center_x + 60.0)
+                    {
+                        return true;
+                    }
+                }
+            }
+            1 => {
+                // Focus start / reset buttons
+                let btn_y = sec_bounds.top + 84.0;
+                if y >= btn_y - 2.0 && y <= btn_y + 28.0 {
+                    if (x >= sec_bounds.left + 215.0 && x <= sec_bounds.left + 280.0)
+                        || (x >= sec_bounds.left + 288.0 && x <= sec_bounds.left + 362.0)
+                    {
+                        return true;
+                    }
+                }
+            }
+            2 => {
+                // Water +250ml / reset buttons
+                let btn_y = sec_bounds.top + 84.0;
+                if y >= btn_y - 2.0 && y <= btn_y + 28.0 {
+                    if (x >= sec_bounds.left + 215.0 && x <= sec_bounds.left + 295.0)
+                        || (x >= sec_bounds.left + 302.0 && x <= sec_bounds.left + 362.0)
+                    {
+                        return true;
+                    }
+                }
+            }
+            3 => {
+                // Todo check boxes
+                let row_start_y = sec_bounds.top + 34.0;
+                let row_h = 24.0;
+                for idx in 0..self.todo_sec.items.len().min(3) {
+                    let cur_y = row_start_y + (idx as f32 * (row_h + 4.0));
+                    if y >= cur_y - 2.0 && y <= cur_y + row_h && x >= sec_bounds.left + 35.0 && x <= sec_bounds.left + 75.0 {
+                        return true;
+                    }
+                }
+            }
+            5 => {
+                // Shelf files
+                if !self.shelf_sec.items.is_empty() {
+                    let chip_start_y = sec_bounds.top + 34.0;
+                    for idx in 0..self.shelf_sec.items.len().min(2) {
+                        let cur_y = chip_start_y + (idx as f32 * 28.0);
+                        if y >= cur_y && y <= cur_y + 24.0 && x >= sec_bounds.left + 40.0 && x <= sec_bounds.left + 380.0 {
+                            return true;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        false
+    }
 }
 
 fn get_monitor_bounds() -> (i32, i32, i32) {
@@ -536,6 +625,22 @@ unsafe extern "system" fn wnd_proc(
             WM_TIMER => {
                 notch.tick_frame();
                 return LRESULT(0);
+            }
+            WM_SETCURSOR => {
+                let hit_test = (lparam.0 & 0xFFFF) as u32;
+                if hit_test == HTCLIENT {
+                    let mut pt = POINT::default();
+                    let _ = GetCursorPos(&mut pt);
+                    let _ = ScreenToClient(hwnd, &mut pt);
+                    let cursor_id = if notch.is_interactive_at(pt.x as f32, pt.y as f32) {
+                        IDC_HAND
+                    } else {
+                        IDC_ARROW
+                    };
+                    let cursor = LoadCursorW(None, cursor_id).unwrap_or_default();
+                    SetCursor(cursor);
+                    return LRESULT(1);
+                }
             }
             WM_MOUSEMOVE => {
                 if !notch.is_hovered {
