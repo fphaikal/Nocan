@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use windows::Win32::Graphics::Direct2D::Common::{D2D1_COLOR_F, D2D_RECT_F};
 use windows::Win32::Graphics::Direct2D::ID2D1SolidColorBrush;
@@ -16,6 +17,7 @@ pub struct MusicSection {
     last_fetched_key: String,
     lyrics: Arc<Mutex<Vec<LyricLine>>>,
     lyrics_status: Arc<Mutex<String>>,
+    lyrics_loaded: Arc<AtomicBool>,
 }
 
 impl MusicSection {
@@ -33,11 +35,12 @@ impl MusicSection {
             last_fetched_key: String::new(),
             lyrics: Arc::new(Mutex::new(default_lyrics)),
             lyrics_status: Arc::new(Mutex::new(String::new())),
+            lyrics_loaded: Arc::new(AtomicBool::new(false)),
         }
     }
 
     pub fn update_lyrics(&mut self, track: &MediaTrackInfo) {
-        if !self.show_lyrics || track.title.is_empty() {
+        if track.title.is_empty() {
             return;
         }
         let key = format!("{}|{}", track.title, track.artist);
@@ -50,6 +53,11 @@ impl MusicSection {
         let artist = track.artist.clone();
         let lyrics_arc = Arc::clone(&self.lyrics);
         let status_arc = Arc::clone(&self.lyrics_status);
+        let loaded_arc = Arc::clone(&self.lyrics_loaded);
+        loaded_arc.store(false, Ordering::SeqCst);
+        if let Ok(mut l) = lyrics_arc.lock() {
+            l.clear();
+        }
 
         if let Ok(mut st) = status_arc.lock() {
             *st = "Loading lyrics".to_string();
@@ -84,6 +92,7 @@ impl MusicSection {
                 if let Ok(mut l) = lyrics_arc.lock() {
                     *l = parsed_lines;
                 }
+                loaded_arc.store(true, Ordering::SeqCst);
                 if let Ok(mut st) = status_arc.lock() {
                     st.clear();
                 }
@@ -304,6 +313,16 @@ impl MusicSection {
         } else {
             lines.iter().rposition(|l| pos_ms >= l.time_ms).unwrap_or(0)
         }
+    }
+
+    /// Active synced lyric sentence for the notch bar (only while a track is playing and its lyrics are loaded).
+    pub fn current_lyric_line(&self, track: &MediaTrackInfo) -> Option<String> {
+        if track.title.is_empty() || !track.is_playing || !self.lyrics_loaded.load(Ordering::SeqCst) {
+            return None;
+        }
+        let lines = self.lyrics.lock().ok()?;
+        let idx = lines.iter().rposition(|l| track.position_ms >= l.time_ms)?;
+        Some(lines[idx].text.clone())
     }
 
     /// Width in px needed by the currently active lyric line (or status text), used to size the notch dynamically.

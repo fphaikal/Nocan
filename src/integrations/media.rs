@@ -69,7 +69,7 @@ impl MediaService {
                         // Suppress expected "no session" errors
                     }
                 }
-                std::thread::sleep(Duration::from_millis(500));
+                std::thread::sleep(Duration::from_millis(250));
             }
         });
     }
@@ -154,9 +154,23 @@ fn poll_current_media(
         if let Ok(pos) = timeline.Position() {
             position_ms = (pos.Duration / 10_000) as u64;
         }
+        if is_playing {
+            if let Ok(lu) = timeline.LastUpdatedTime() {
+                // Browsers report a stale Position; extrapolate from the time it was last updated.
+                let now_ft = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros() as i64).unwrap_or(0) + 11_644_473_600_000_000) * 10;
+                let elapsed_ms = ((now_ft - lu.UniversalTime) / 10_000).clamp(0, 6 * 3600 * 1000);
+                if lu.UniversalTime > 0 {
+                    position_ms += elapsed_ms as u64;
+                }
+            }
+        }
         if let Ok(end) = timeline.EndTime() {
             duration_ms = (end.Duration / 10_000) as u64;
         }
+    }
+
+    if duration_ms > 0 && position_ms > duration_ms {
+        position_ms = duration_ms;
     }
 
     Ok(MediaTrackInfo {

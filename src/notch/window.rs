@@ -70,6 +70,9 @@ const PEEK_CARD_W: f32 = 310.0;
 const PEEK_CARD_H: f32 = 60.0;
 
 const EXPANDED_W: f32 = 420.0;
+const LYRIC_BAR_MIN_W: f32 = 190.0;
+const LYRIC_BAR_MAX_W: f32 = 560.0;
+const LYRIC_BAR_PAD: f32 = 22.0;
 const LYRICS_MIN_W: f32 = 440.0;
 const LYRICS_MAX_W: f32 = 700.0;
 const LYRICS_PANE_LEFT: f32 = 264.0;
@@ -137,6 +140,9 @@ pub struct NotchWindow {
     pub autostart_enabled: bool,
     current_body_w: f32,
     lyrics_w: f32,
+    lyric_line: Option<String>,
+    lyric_text_w: f32,
+    lyric_changed_at: Instant,
     current_h: f32,
     vel_w: f32,
     vel_h: f32,
@@ -292,6 +298,9 @@ impl NotchWindow {
             autostart_enabled: true,
             current_body_w: COLLAPSED_W,
             lyrics_w: LYRICS_MIN_W,
+            lyric_line: None,
+            lyric_text_w: 0.0,
+            lyric_changed_at: Instant::now(),
             current_h: COLLAPSED_H,
             vel_w: 0.0,
             vel_h: 0.0,
@@ -358,12 +367,12 @@ impl NotchWindow {
     /// while the fixed `580x160` DirectComposition surface never needs resizing.
     fn update_window_rgn(&mut self) {
         let is_minimized_mode = self.minimal_notch || self.auto_minimized;
-        let min_hit_w = if is_minimized_mode && !self.is_hovered && self.peek_overlay.is_none() {
+        let min_hit_w = if is_minimized_mode && !self.is_hovered && self.peek_overlay.is_none() && self.lyric_line.is_none() {
             100.0f32
         } else {
             COLLAPSED_W
         };
-        let min_hit_h = if is_minimized_mode && !self.is_hovered && self.peek_overlay.is_none() {
+        let min_hit_h = if is_minimized_mode && !self.is_hovered && self.peek_overlay.is_none() && self.lyric_line.is_none() {
             10.0f32
         } else {
             COLLAPSED_H
@@ -698,6 +707,20 @@ impl NotchWindow {
         // 2. Poll volume, audio device changes, and Bluetooth connections
         self.poll_system_events(now);
 
+        // Per-sentence lyric bar: follows the active synced lyric line while music plays.
+        {
+            let track = self.media_service.get_info();
+            self.music_sec.update_lyrics(&track);
+            let new_line = self.music_sec.current_lyric_line(&track);
+            if new_line != self.lyric_line {
+                self.lyric_changed_at = now;
+                if let Some(ref s) = new_line {
+                    self.lyric_text_w = self.dwrite.measure_text_width(s, &self.dwrite.format_lyric_bar);
+                }
+                self.lyric_line = new_line;
+            }
+        }
+
         if self.carousel.current_section == 0 && self.music_sec.show_lyrics {
             let track = self.media_service.get_info();
             let pane = self.music_sec.lyrics_pane_width(&self.dwrite, &track);
@@ -744,12 +767,12 @@ impl NotchWindow {
             let dy = cursor_pt.y as f32 - (self.screen_y as f32);
 
             if !self.is_hovered {
-                let min_hit_w = if is_minimized_mode && self.peek_overlay.is_none() {
+                let min_hit_w = if is_minimized_mode && self.peek_overlay.is_none() && self.lyric_line.is_none() {
                     100.0f32
                 } else {
                     COLLAPSED_W
                 };
-                let min_hit_h = if is_minimized_mode && self.peek_overlay.is_none() {
+                let min_hit_h = if is_minimized_mode && self.peek_overlay.is_none() && self.lyric_line.is_none() {
                     10.0f32
                 } else {
                     COLLAPSED_H
@@ -795,6 +818,8 @@ impl NotchWindow {
                     (PEEK_CARD_W, PEEK_CARD_H)
                 }
             }
+        } else if self.lyric_line.is_some() {
+            ((self.lyric_text_w + 2.0 * LYRIC_BAR_PAD).clamp(LYRIC_BAR_MIN_W, LYRIC_BAR_MAX_W), COLLAPSED_H)
         } else if is_minimized_mode {
             (MINIMIZED_W, MINIMIZED_H)
         } else {
@@ -941,7 +966,8 @@ impl NotchWindow {
                 1.0
             };
 
-            let closed_alpha = min_fade * peek_suppress_idle * (1.0 - open_t * 2.8).clamp(0.0, 1.0);
+            let lyric_active = self.lyric_line.is_some();
+        let closed_alpha = if lyric_active { 0.0 } else { min_fade * peek_suppress_idle * (1.0 - open_t * 2.8).clamp(0.0, 1.0) };
             let open_alpha = ((open_t - 0.32) / 0.68).clamp(0.0, 1.0);
 
             // 1b. Draw Collapsed Bar (150x30) when visible
@@ -966,6 +992,28 @@ impl NotchWindow {
                 }
                 if pushed {
                     self.d2d.pop_layer();
+                }
+            }
+
+            // 1b2. Draw the current lyric sentence (fades in on each change)
+            if self.peek_overlay.is_none() && self.last_peek.is_none() && open_t < 0.2 {
+                if let Some(ref line) = self.lyric_line {
+                    let fade = (self.lyric_changed_at.elapsed().as_secs_f32() / 0.28).clamp(0.0, 1.0);
+                    let w_t = ((body_w - 120.0) / 60.0).clamp(0.0, 1.0);
+                    let alpha = fade * w_t;
+                    if alpha > 0.01 {
+                        let pushed = self.d2d.push_clipped_opacity_layer(body_left, body_w, body_h, corner_r, ear, alpha);
+                        let rect = D2D_RECT_F {
+                            left: body_left + LYRIC_BAR_PAD * 0.5,
+                            top: 0.0,
+                            right: body_left + body_w - LYRIC_BAR_PAD * 0.5,
+                            bottom: body_h,
+                        };
+                        self.dwrite.draw_text(&self.d2d.context, line, rect, white_b, &self.dwrite.format_lyric_bar);
+                        if pushed {
+                            self.d2d.pop_layer();
+                        }
+                    }
                 }
             }
 

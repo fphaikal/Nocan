@@ -33,6 +33,7 @@ pub struct DWriteContext {
     pub format_button: IDWriteTextFormat,       // 12px Normal, left, v-center
     pub format_button_center: IDWriteTextFormat,// 12px SemiBold, center, v-center
     pub format_lyric: IDWriteTextFormat,        // 15.5px Bold, left, v-center
+    pub format_lyric_bar: IDWriteTextFormat,    // 13.5px SemiBold, center, v-center
     pub format_nav: IDWriteTextFormat,          // 18px SemiBold, center, v-center
 }
 
@@ -99,6 +100,7 @@ impl DWriteContext {
             format_button: make(12.0, DWRITE_FONT_WEIGHT_NORMAL, 0)?,
             format_button_center: make(12.0, DWRITE_FONT_WEIGHT_SEMI_BOLD, 1)?,
             format_lyric: make(15.5, DWRITE_FONT_WEIGHT_BOLD, 0)?,
+            format_lyric_bar: make(13.5, DWRITE_FONT_WEIGHT_SEMI_BOLD, 1)?,
             format_nav: make(18.0, DWRITE_FONT_WEIGHT_SEMI_BOLD, 1)?,
             factory,
         })
