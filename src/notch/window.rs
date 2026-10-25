@@ -535,6 +535,7 @@ impl NotchWindow {
         self.music_sec.show_lyrics = true;
         self.lyrics_w = 520.0;
         self.current_body_w = 520.0;
+        self.lyric_color = (0.75, 0.28, 0.35);
         self.resize_and_dump(&format!("{}\\dump_lyrics.raw", dir));
 
         // 5. Mid-transition preview between Section 0 (Music) and Section 1 (Focus)
@@ -851,7 +852,6 @@ impl NotchWindow {
                 let max_y = self.current_h.max(EXPANDED_H) + 6.0;
                 if dx > half_w || dy < -5.0 || dy > max_y {
                     self.is_hovered = false;
-                    self.music_sec.show_lyrics = false;
                 }
             }
         }
@@ -1205,6 +1205,7 @@ impl NotchWindow {
                                 white_b,
                                 dim_b,
                                 bar_b,
+                                self.lyric_color,
                             );
                         }
                         1 => {
@@ -2122,12 +2123,10 @@ unsafe extern "system" fn wnd_proc(
             }
             WM_MOUSELEAVE => {
                 notch.is_hovered = false;
-                notch.music_sec.show_lyrics = false;
                 return LRESULT(0);
             }
             WM_MOUSEWHEEL => {
                 let delta = ((wparam.0 >> 16) & 0xFFFF) as i16;
-                notch.music_sec.show_lyrics = false;
                 notch.carousel.on_wheel(delta);
                 return LRESULT(0);
             }

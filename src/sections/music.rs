@@ -109,26 +109,29 @@ impl MusicSection {
         white_brush: &ID2D1SolidColorBrush,
         dim_brush: &ID2D1SolidColorBrush,
         bar_bg_brush: &ID2D1SolidColorBrush,
+        ambient_color: (f32, f32, f32),
     ) {
         let left = bounds.left;
         let top = bounds.top;
 
-        // If in lyrics mode, draw bottom ambient blue glow & right lyrics pane
+        // If in lyrics mode, draw bottom ambient glow from album cover & right lyrics pane
         if self.show_lyrics {
             let body_w = bounds.right - bounds.left;
             let body_h = bounds.bottom - bounds.top;
+            let (cr, cg, cb) = ambient_color;
+            let sh = |v: f32, m: f32| (v * m).min(1.0);
             d2d.draw_ambient_glow(
                 left,
                 body_w,
                 body_h,
                 32.0,
-                0.82,
                 0.85,
+                0.90,
                 0.0,
                 &[
-                    (0.0, D2D1_COLOR_F { r: 44.0 / 255.0, g: 100.0 / 255.0, b: 184.0 / 255.0, a: 1.0 }),
-                    (0.5, D2D1_COLOR_F { r: 58.0 / 255.0, g: 122.0 / 255.0, b: 208.0 / 255.0, a: 1.0 }),
-                    (1.0, D2D1_COLOR_F { r: 42.0 / 255.0, g: 90.0 / 255.0, b: 168.0 / 255.0, a: 1.0 }),
+                    (0.0, D2D1_COLOR_F { r: sh(cr, 1.15), g: sh(cg, 1.15), b: sh(cb, 1.15), a: 1.0 }),
+                    (0.5, D2D1_COLOR_F { r: cr, g: cg, b: cb, a: 1.0 }),
+                    (1.0, D2D1_COLOR_F { r: sh(cr, 0.80), g: sh(cg, 0.80), b: sh(cb, 0.80), a: 1.0 }),
                 ],
             );
         }
@@ -325,7 +328,7 @@ impl MusicSection {
         Some(lines[idx].text.clone())
     }
 
-    /// Width in px needed by the currently active lyric line (or status text), used to size the notch dynamically.
+    /// Width in px needed by the visible lyric lines (or status text), used to size the notch dynamically.
     pub fn lyrics_pane_width(&self, dwrite: &DWriteContext, track: &MediaTrackInfo) -> f32 {
         let status = self.lyrics_status.lock().map(|s| s.clone()).unwrap_or_default();
         if !status.is_empty() && !track.title.is_empty() {
@@ -341,7 +344,15 @@ impl MusicSection {
                 return 0.0;
             }
             let idx = Self::active_index(&lines, track, pos_ms);
-            return dwrite.measure_text_width(&lines[idx].text, &dwrite.format_lyric);
+            let start_i = idx.saturating_sub(1);
+            let mut max_w = 0.0f32;
+            for i in start_i..(start_i + 4).min(lines.len()) {
+                let w = dwrite.measure_text_width(&lines[i].text, &dwrite.format_lyric);
+                if w > max_w {
+                    max_w = w;
+                }
+            }
+            return max_w;
         }
         0.0
     }
