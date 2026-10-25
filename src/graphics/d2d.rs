@@ -736,6 +736,58 @@ impl D2DContext {
         }
     }
 
+    /// Draws an open circular arc from `start_deg` to `end_deg` (clockwise, 0 deg = +X right, 90 deg = +Y down).
+    pub fn draw_arc_segment(
+        &self,
+        cx: f32,
+        cy: f32,
+        radius: f32,
+        start_deg: f32,
+        end_deg: f32,
+        stroke_width: f32,
+        brush: &ID2D1SolidColorBrush,
+    ) {
+        let sweep_deg = (end_deg - start_deg).clamp(0.0, 359.9);
+        if sweep_deg <= 0.1 {
+            return;
+        }
+        let s_rad = start_deg.to_radians();
+        let e_rad = (start_deg + sweep_deg).to_radians();
+        let start_pt = D2D_POINT_2F {
+            x: cx + radius * s_rad.cos(),
+            y: cy + radius * s_rad.sin(),
+        };
+        let end_pt = D2D_POINT_2F {
+            x: cx + radius * e_rad.cos(),
+            y: cy + radius * e_rad.sin(),
+        };
+        unsafe {
+            if let Ok(path) = self.factory.CreatePathGeometry() {
+                if let Ok(sink) = path.Open() {
+                    sink.BeginFigure(start_pt, D2D1_FIGURE_BEGIN_HOLLOW);
+                    sink.AddArc(&D2D1_ARC_SEGMENT {
+                        point: end_pt,
+                        size: D2D_SIZE_F {
+                            width: radius,
+                            height: radius,
+                        },
+                        rotationAngle: 0.0,
+                        sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                        arcSize: if sweep_deg > 180.0 {
+                            D2D1_ARC_SIZE_LARGE
+                        } else {
+                            D2D1_ARC_SIZE_SMALL
+                        },
+                    });
+                    sink.EndFigure(D2D1_FIGURE_END_OPEN);
+                    let _ = sink.Close();
+                    self.context
+                        .DrawGeometry(&path, brush, stroke_width, &self.round_stroke_style);
+                }
+            }
+        }
+    }
+
     /// Draws a stroked open polyline with round caps and joins.
     pub fn draw_polyline(
         &self,

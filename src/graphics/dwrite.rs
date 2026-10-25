@@ -18,6 +18,8 @@ pub struct DWriteContext {
     pub format_regular: IDWriteTextFormat,      // 13px Normal, left, v-center
     pub format_regular_bold: IDWriteTextFormat, // 13px Bold, left, v-center
     pub format_regular_right: IDWriteTextFormat,// 13px Normal, right, v-center
+    pub format_regular_semibold_right: IDWriteTextFormat, // 13px SemiBold, right, v-center
+    pub format_peek_pct: IDWriteTextFormat,     // 24px SemiBold, right, v-center
     pub format_sub: IDWriteTextFormat,          // 11.5px Normal, left, v-center
     pub format_sub_center: IDWriteTextFormat,   // 11.5px Normal, center, v-center
     pub format_small: IDWriteTextFormat,        // 9.5px Normal, left, v-center
@@ -82,6 +84,8 @@ impl DWriteContext {
             format_regular: make(13.0, DWRITE_FONT_WEIGHT_NORMAL, 0)?,
             format_regular_bold: make(13.0, DWRITE_FONT_WEIGHT_BOLD, 0)?,
             format_regular_right: make(13.0, DWRITE_FONT_WEIGHT_NORMAL, 2)?,
+            format_regular_semibold_right: make(13.0, DWRITE_FONT_WEIGHT_SEMI_BOLD, 2)?,
+            format_peek_pct: make(24.0, DWRITE_FONT_WEIGHT_SEMI_BOLD, 2)?,
             format_sub: make(11.5, DWRITE_FONT_WEIGHT_NORMAL, 0)?,
             format_sub_center: make(11.5, DWRITE_FONT_WEIGHT_NORMAL, 1)?,
             format_small: make(9.5, DWRITE_FONT_WEIGHT_NORMAL, 0)?,
