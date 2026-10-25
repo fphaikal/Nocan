@@ -14,14 +14,15 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    DispatchMessageW, GetCursorPos, GetMessageW, LoadCursorW, LoadIconW, MessageBoxW,
-    PostQuitMessage, RegisterClassExW, SetCursor, SetForegroundWindow, SetWindowLongPtrW,
-    SetWindowPos, ShowWindow, TrackPopupMenu, TranslateMessage, GWLP_USERDATA, HTCLIENT,
-    HWND_TOPMOST, IDC_ARROW, IDC_HAND, IDI_APPLICATION, MB_ICONINFORMATION, MB_OK, MF_CHECKED,
-    MF_SEPARATOR, MF_STRING, MF_UNCHECKED, MSG, SWP_NOACTIVATE, SW_SHOWNOACTIVATE, TPM_BOTTOMALIGN,
-    TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_DESTROY, WM_DROPFILES, WM_LBUTTONDOWN, WM_MOUSEMOVE,
-    WM_MOUSEWHEEL, WM_RBUTTONUP, WM_SETCURSOR, WM_TIMER, WM_USER, WNDCLASSEXW,
-    WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    DispatchMessageW, GetClassNameW, GetCursorPos, GetForegroundWindow, GetMessageW, IsIconic,
+    IsWindowVisible, LoadCursorW, LoadIconW, MessageBoxW, PostQuitMessage, RegisterClassExW,
+    SetCursor, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, TrackPopupMenu,
+    TranslateMessage, GWLP_USERDATA, HTCLIENT, HWND_TOPMOST, IDC_ARROW, IDC_HAND, IDI_APPLICATION,
+    MB_ICONINFORMATION, MB_OK, MF_CHECKED, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, MSG,
+    SWP_NOACTIVATE, SW_SHOWNOACTIVATE, TPM_BOTTOMALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_DESTROY,
+    WM_DROPFILES, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONUP, WM_SETCURSOR,
+    WM_TIMER, WM_USER, WNDCLASSEXW, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_POPUP,
 };
 
 use crate::graphics::composition::CompositionTarget;
@@ -38,6 +39,11 @@ use crate::sections::openmaus::OpenMausSection;
 use crate::sections::shelf::ShelfSection;
 use crate::sections::todo::TodoSection;
 use crate::sections::water::WaterSection;
+
+const MINIMIZED_W: f32 = 44.0;
+const MINIMIZED_H: f32 = 4.0;
+const MINIMIZED_R: f32 = 2.0;
+const MINIMIZED_EAR: f32 = 2.0;
 
 const COLLAPSED_W: f32 = 150.0;
 const COLLAPSED_H: f32 = 30.0;
@@ -76,6 +82,7 @@ pub struct NotchWindow {
     pub is_hovered: bool,
     pub mascot_enabled: bool,
     pub minimal_notch: bool,
+    pub auto_minimized: bool,
     pub autostart_enabled: bool,
     current_body_w: f32,
     current_h: f32,
@@ -192,6 +199,7 @@ impl NotchWindow {
             is_hovered: false,
             mascot_enabled: false,
             minimal_notch: false,
+            auto_minimized: false,
             autostart_enabled: true,
             current_body_w: COLLAPSED_W,
             current_h: COLLAPSED_H,
@@ -268,6 +276,16 @@ impl NotchWindow {
         self.carousel.current_section = 1;
         self.carousel.page_pos = 0.45;
         self.resize_and_dump(&format!("{}\\dump_transition_0_1.raw", dir));
+
+        // 6. Minimized Notch (when inside an application: 44x4, corner_r=2, ear_r=2)
+        self.is_hovered = false;
+        self.auto_minimized = true;
+        self.current_body_w = MINIMIZED_W;
+        self.current_h = MINIMIZED_H;
+        self.current_r = MINIMIZED_R;
+        self.current_ear = MINIMIZED_EAR;
+        self.resize_and_dump(&format!("{}\\dump_minimized.raw", dir));
+        self.auto_minimized = false;
     }
 
     fn resize_and_dump(&mut self, path: &str) {
@@ -282,10 +300,78 @@ impl NotchWindow {
         self.render();
     }
 
+    /// Detects whether the user is currently inside an active application window
+    /// (as opposed to the Windows Desktop `Progman`/`WorkerW` or Taskbar `Shell_TrayWnd`),
+    /// matching `nocan.original.exe` (`0x140025f53`).
+    fn check_foreground_app(&self) -> Option<bool> {
+        unsafe {
+            let fg = GetForegroundWindow();
+            if fg.0.is_null() {
+                return Some(false);
+            }
+            if fg == self.hwnd {
+                return None;
+            }
+            if !IsWindowVisible(fg).as_bool() || IsIconic(fg).as_bool() {
+                return Some(false);
+            }
+            let mut class_buf = [0u16; 64];
+            let len = GetClassNameW(fg, &mut class_buf);
+            if len > 0 {
+                let class_name = String::from_utf16_lossy(&class_buf[..len as usize]);
+                if class_name == "Progman"
+                    || class_name == "WorkerW"
+                    || class_name == "Shell_TrayWnd"
+                    || class_name == "Shell_SecondaryTrayWnd"
+                {
+                    return Some(false);
+                }
+            }
+            Some(true)
+        }
+    }
+
     pub fn tick_frame(&mut self) {
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame_instant).as_secs_f32().clamp(0.001, 0.050);
         self.last_frame_instant = now;
+
+        // 1. Check if user is in an application to auto-minimize the notch
+        if let Some(in_app) = self.check_foreground_app() {
+            self.auto_minimized = in_app;
+        }
+        let is_minimized_mode = self.minimal_notch || self.auto_minimized;
+
+        // 2. Screen-space cursor hover check (matches nocan.original.exe 0x140024db4..0x140024e86:
+        //    when minimized to 44x4, the hover hit-box at top-center is widened to 100x10 + 4px margin)
+        let mut cursor_pt = POINT::default();
+        if unsafe { GetCursorPos(&mut cursor_pt).is_ok() } {
+            let screen_cx = (self.screen_x as f32) + (self.screen_w as f32) * 0.5;
+            let dx = (cursor_pt.x as f32 - screen_cx).abs();
+            let dy = cursor_pt.y as f32 - (self.screen_y as f32);
+
+            if !self.is_hovered {
+                let min_hit_w = if is_minimized_mode { 100.0f32 } else { COLLAPSED_W };
+                let min_hit_h = if is_minimized_mode { 10.0f32 } else { COLLAPSED_H };
+                let half_w = self.current_body_w.max(min_hit_w) * 0.5 + 4.0;
+                let max_y = self.current_h.max(min_hit_h) + 4.0;
+                if dx <= half_w && dy >= -2.0 && dy <= max_y {
+                    self.is_hovered = true;
+                }
+            } else {
+                let target_w = if self.carousel.current_section == 0 && self.music_sec.show_lyrics {
+                    LYRICS_W
+                } else {
+                    EXPANDED_W
+                };
+                let half_w = self.current_body_w.max(target_w) * 0.5 + EXPANDED_EAR + 6.0;
+                let max_y = self.current_h.max(EXPANDED_H) + 6.0;
+                if dx > half_w || dy < -5.0 || dy > max_y {
+                    self.is_hovered = false;
+                    self.music_sec.show_lyrics = false;
+                }
+            }
+        }
 
         let prev_sec = self.carousel.current_section;
         self.carousel.update(dt);
@@ -301,8 +387,8 @@ impl NotchWindow {
                 EXPANDED_W
             };
             (w, EXPANDED_H, EXPANDED_R, EXPANDED_EAR)
-        } else if self.minimal_notch {
-            (COLLAPSED_W, 8.0, 4.0, 4.0)
+        } else if is_minimized_mode {
+            (MINIMIZED_W, MINIMIZED_H, MINIMIZED_R, MINIMIZED_EAR)
         } else {
             (COLLAPSED_W, COLLAPSED_H, COLLAPSED_R, COLLAPSED_EAR)
         };
@@ -457,10 +543,12 @@ impl NotchWindow {
             let track = self.media_service.get_info();
 
             let open_t = ((body_h - COLLAPSED_H) / (EXPANDED_H - COLLAPSED_H)).clamp(0.0, 1.0);
-            let closed_alpha = (1.0 - open_t * 2.8).clamp(0.0, 1.0);
+            // Smoothly fade collapsed bar content as body_h shrinks below 30px toward 4px (0x14003149c: (body_h - 18.0) / 12.0)
+            let min_fade = ((body_h - 18.0) / 12.0).clamp(0.0, 1.0);
+            let closed_alpha = min_fade * (1.0 - open_t * 2.8).clamp(0.0, 1.0);
             let open_alpha = ((open_t - 0.28) / 0.72).clamp(0.0, 1.0);
 
-            if closed_alpha > 0.01 && !self.minimal_notch && body_h >= 20.0 {
+            if closed_alpha > 0.01 && body_h >= 18.0 {
                 let pushed = if closed_alpha < 0.99 {
                     self.d2d.push_clipped_opacity_layer(body_left, body_w, body_h, corner_r, ear, closed_alpha)
                 } else {
