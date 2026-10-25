@@ -72,7 +72,7 @@ const PEEK_CARD_H: f32 = 60.0;
 const EXPANDED_W: f32 = 420.0;
 const LYRIC_BAR_MIN_W: f32 = 190.0;
 const LYRIC_BAR_MAX_W: f32 = 560.0;
-const LYRIC_BAR_PAD: f32 = 22.0;
+const LYRIC_BAR_EXTRA: f32 = 62.0;
 const LYRICS_MIN_W: f32 = 440.0;
 const LYRICS_MAX_W: f32 = 700.0;
 const LYRICS_PANE_LEFT: f32 = 264.0;
@@ -143,6 +143,9 @@ pub struct NotchWindow {
     lyric_line: Option<String>,
     lyric_text_w: f32,
     lyric_changed_at: Instant,
+    lyric_color: (f32, f32, f32),
+    lyric_color_target: (f32, f32, f32),
+    lyric_color_key: String,
     current_h: f32,
     vel_w: f32,
     vel_h: f32,
@@ -301,6 +304,9 @@ impl NotchWindow {
             lyric_line: None,
             lyric_text_w: 0.0,
             lyric_changed_at: Instant::now(),
+            lyric_color: (0.16, 0.36, 0.80),
+            lyric_color_target: (0.16, 0.36, 0.80),
+            lyric_color_key: String::new(),
             current_h: COLLAPSED_H,
             vel_w: 0.0,
             vel_h: 0.0,
@@ -350,6 +356,35 @@ impl NotchWindow {
         let ear = (COLLAPSED_EAR + (EXPANDED_EAR - COLLAPSED_EAR) * open_t)
             .min((body_h - corner_r).max(0.0));
         (corner_r, ear)
+    }
+
+    /// Saturation-weighted average of the album cover (premultiplied BGRA), toned so white text stays readable.
+    fn dominant_color(bgra: &[u8]) -> (f32, f32, f32) {
+        let (mut sr, mut sg, mut sb, mut sw) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+        for px in bgra.chunks_exact(4) {
+            let a = px[3] as f32 / 255.0;
+            if a < 0.5 {
+                continue;
+            }
+            let (b, g, r) = (px[0] as f32 / 255.0 / a, px[1] as f32 / 255.0 / a, px[2] as f32 / 255.0 / a);
+            let mx = r.max(g).max(b);
+            let mn = r.min(g).min(b);
+            let w = (mx - mn) * 2.0 + 0.05 + mx * 0.1;
+            sr += r * w;
+            sg += g * w;
+            sb += b * w;
+            sw += w;
+        }
+        if sw <= 0.0 {
+            return (0.16, 0.36, 0.80);
+        }
+        let (mut r, mut g, mut b) = (sr / sw, sg / sw, sb / sw);
+        let mx = r.max(g).max(b).max(0.001);
+        let k = 0.62 / mx;
+        r = (r * k).min(1.0);
+        g = (g * k).min(1.0);
+        b = (b * k).min(1.0);
+        (r, g, b)
     }
 
     #[inline]
@@ -581,6 +616,17 @@ impl NotchWindow {
         self.resize_and_dump(&format!("{}\\dump_charging.raw", dir));
         self.peek_overlay = None;
         self.last_peek = None;
+
+        // 11. Lyric bar with album ambience & music logo
+        let sample_line = "Pagi kucari kamu, malam juga begitu".to_string();
+        self.lyric_text_w = self.dwrite.measure_text_width(&sample_line, &self.dwrite.format_lyric_bar);
+        self.lyric_line = Some(sample_line);
+        self.lyric_color = (0.75, 0.28, 0.35); // warm red/rose ambience
+        self.current_body_w = (self.lyric_text_w + LYRIC_BAR_EXTRA).clamp(LYRIC_BAR_MIN_W, LYRIC_BAR_MAX_W);
+        self.current_h = COLLAPSED_H;
+        self.lyric_changed_at = Instant::now() - std::time::Duration::from_millis(500);
+        self.resize_and_dump(&format!("{}\\dump_lyricbar.raw", dir));
+        self.lyric_line = None;
     }
 
     fn resize_and_dump(&mut self, path: &str) {
@@ -711,6 +757,19 @@ impl NotchWindow {
         {
             let track = self.media_service.get_info();
             self.music_sec.update_lyrics(&track);
+            let color_key = format!("{}|{}", track.title, track.artist);
+            if color_key != self.lyric_color_key {
+                self.lyric_color_key = color_key;
+                self.lyric_color_target = track
+                    .thumbnail_bgra
+                    .as_ref()
+                    .map(|b| Self::dominant_color(b))
+                    .unwrap_or((0.16, 0.36, 0.80));
+            }
+            let ck = (6.0 * dt).min(1.0);
+            self.lyric_color.0 += (self.lyric_color_target.0 - self.lyric_color.0) * ck;
+            self.lyric_color.1 += (self.lyric_color_target.1 - self.lyric_color.1) * ck;
+            self.lyric_color.2 += (self.lyric_color_target.2 - self.lyric_color.2) * ck;
             let new_line = self.music_sec.current_lyric_line(&track);
             if new_line != self.lyric_line {
                 self.lyric_changed_at = now;
@@ -819,7 +878,7 @@ impl NotchWindow {
                 }
             }
         } else if self.lyric_line.is_some() {
-            ((self.lyric_text_w + 2.0 * LYRIC_BAR_PAD).clamp(LYRIC_BAR_MIN_W, LYRIC_BAR_MAX_W), COLLAPSED_H)
+            ((self.lyric_text_w + LYRIC_BAR_EXTRA).clamp(LYRIC_BAR_MIN_W, LYRIC_BAR_MAX_W), COLLAPSED_H)
         } else if is_minimized_mode {
             (MINIMIZED_W, MINIMIZED_H)
         } else {
@@ -1000,13 +1059,44 @@ impl NotchWindow {
                 if let Some(ref line) = self.lyric_line {
                     let fade = (self.lyric_changed_at.elapsed().as_secs_f32() / 0.28).clamp(0.0, 1.0);
                     let w_t = ((body_w - 120.0) / 60.0).clamp(0.0, 1.0);
+                    // Album-cover ambience behind the sentence
+                    let (cr, cg, cb) = self.lyric_color;
+                    let sh = |v: f32, m: f32| (v * m).min(1.0);
+                    if w_t > 0.01 {
+                        let shift = (anim_time * 0.5).sin() * body_w * 0.08;
+                        self.d2d.draw_ambient_glow(
+                            body_left,
+                            body_w,
+                            body_h,
+                            corner_r,
+                            1.0,
+                            0.95 * w_t,
+                            shift,
+                            &[
+                                (0.0, D2D1_COLOR_F { r: sh(cr, 1.15), g: sh(cg, 1.15), b: sh(cb, 1.15), a: 1.0 }),
+                                (0.5, D2D1_COLOR_F { r: cr, g: cg, b: cb, a: 1.0 }),
+                                (1.0, D2D1_COLOR_F { r: sh(cr, 0.8), g: sh(cg, 0.8), b: sh(cb, 0.8), a: 1.0 }),
+                            ],
+                        );
+                    }
                     let alpha = fade * w_t;
                     if alpha > 0.01 {
                         let pushed = self.d2d.push_clipped_opacity_layer(body_left, body_w, body_h, corner_r, ear, alpha);
+                        // Music note logo (beamed eighth notes) at the left
+                        let icx = body_left + 19.0;
+                        let icy = body_h * 0.5;
+                        self.d2d.fill_ellipse(icx - 3.4, icy + 4.2, 2.5, 2.0, white_b);
+                        self.d2d.fill_ellipse(icx + 3.6, icy + 2.8, 2.5, 2.0, white_b);
+                        self.d2d.draw_line(icx - 1.1, icy + 4.0, icx - 1.1, icy - 5.2, white_b, 1.4, false);
+                        self.d2d.draw_line(icx + 5.9, icy + 2.6, icx + 5.9, icy - 6.4, white_b, 1.4, false);
+                        self.d2d.fill_polygon(
+                            &[(icx - 1.8, icy - 5.9), (icx + 6.6, icy - 7.1), (icx + 6.6, icy - 4.5), (icx - 1.8, icy - 3.3)],
+                            white_b,
+                        );
                         let rect = D2D_RECT_F {
-                            left: body_left + LYRIC_BAR_PAD * 0.5,
+                            left: body_left + 34.0,
                             top: 0.0,
-                            right: body_left + body_w - LYRIC_BAR_PAD * 0.5,
+                            right: body_left + body_w - 16.0,
                             bottom: body_h,
                         };
                         self.dwrite.draw_text(&self.d2d.context, line, rect, white_b, &self.dwrite.format_lyric_bar);
