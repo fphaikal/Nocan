@@ -66,8 +66,15 @@ impl MediaService {
                             *lock = info;
                         }
                     }
-                    Err(_e) => {
-                        // Suppress expected "no session" errors
+                    Err(e) => {
+                        let _ = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open("C:\\Users\\abufa\\AppData\\Local\\Nocan\\nocan_media.log")
+                            .and_then(|mut f| {
+                                use std::io::Write;
+                                writeln!(f, "poll_current_media err: {:?}", e)
+                            });
                     }
                 }
                 std::thread::sleep(Duration::from_millis(250));
@@ -147,10 +154,24 @@ fn poll_current_media(
             *cached_key = key;
             *thumb_retry_count = 0;
             *cached_thumb = decode_thumbnail_62x62(&media_props).ok().map(Arc::new);
-        } else if cached_thumb.is_none() && *thumb_retry_count < 12 {
-            // Windows GSMTC thumbnail streams may become available a few ticks after track metadata
+        } else if cached_thumb.is_none() {
             *thumb_retry_count += 1;
-            *cached_thumb = decode_thumbnail_62x62(&media_props).ok().map(Arc::new);
+            // Persistent retry cadence:
+            // - Ticks 1..12 (first 3s): retry every 250ms tick
+            // - Ticks 13..40 (3s to 10s): retry every 4 ticks (1s)
+            // - Ticks > 40: retry every 20 ticks (5s)
+            let should_retry = if *thumb_retry_count <= 12 {
+                true
+            } else if *thumb_retry_count <= 40 {
+                *thumb_retry_count % 4 == 0
+            } else {
+                *thumb_retry_count % 20 == 0
+            };
+            if should_retry {
+                if let Ok(bytes) = decode_thumbnail_62x62(&media_props) {
+                    *cached_thumb = Some(Arc::new(bytes));
+                }
+            }
         }
     } else {
         cached_key.clear();
@@ -209,7 +230,7 @@ fn decode_thumbnail_62x62(
     }
 
     let transform = BitmapTransform::new()?;
-    transform.SetInterpolationMode(BitmapInterpolationMode::Fant)?;
+    transform.SetInterpolationMode(BitmapInterpolationMode::Linear)?;
 
     // Scale so the smaller dimension becomes 62, then center-crop 62x62
     let target = 62u32;

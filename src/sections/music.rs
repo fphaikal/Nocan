@@ -15,6 +15,9 @@ pub struct LyricLine {
 pub struct MusicSection {
     pub show_lyrics: bool,
     last_fetched_key: String,
+    fetch_in_progress: Arc<AtomicBool>,
+    fetch_failed: Arc<AtomicBool>,
+    last_fetch_instant: std::time::Instant,
     lyrics: Arc<Mutex<Vec<LyricLine>>>,
     lyrics_status: Arc<Mutex<String>>,
     lyrics_loaded: Arc<AtomicBool>,
@@ -33,6 +36,9 @@ impl MusicSection {
         Self {
             show_lyrics: false,
             last_fetched_key: String::new(),
+            fetch_in_progress: Arc::new(AtomicBool::new(false)),
+            fetch_failed: Arc::new(AtomicBool::new(false)),
+            last_fetch_instant: std::time::Instant::now(),
             lyrics: Arc::new(Mutex::new(default_lyrics)),
             lyrics_status: Arc::new(Mutex::new(String::new())),
             lyrics_loaded: Arc::new(AtomicBool::new(false)),
@@ -44,10 +50,27 @@ impl MusicSection {
             return;
         }
         let key = format!("{}|{}|{}", track.title, track.artist, track.album);
-        if key == self.last_fetched_key {
+
+        if self.fetch_in_progress.load(Ordering::SeqCst) {
             return;
         }
+
+        // Retry condition: if the previous attempt failed, lyrics are not loaded, track is still playing,
+        // and at least 6 seconds have passed since the previous attempt:
+        let is_retry = key == self.last_fetched_key
+            && self.fetch_failed.load(Ordering::SeqCst)
+            && !self.lyrics_loaded.load(Ordering::SeqCst)
+            && track.is_playing
+            && self.last_fetch_instant.elapsed().as_secs() >= 6;
+
+        if key == self.last_fetched_key && !is_retry {
+            return;
+        }
+
         self.last_fetched_key = key;
+        self.last_fetch_instant = std::time::Instant::now();
+        self.fetch_failed.store(false, Ordering::SeqCst);
+        self.fetch_in_progress.store(true, Ordering::SeqCst);
 
         let title = track.title.clone();
         let artist = track.artist.clone();
@@ -57,21 +80,22 @@ impl MusicSection {
         let lyrics_arc = Arc::clone(&self.lyrics);
         let status_arc = Arc::clone(&self.lyrics_status);
         let loaded_arc = Arc::clone(&self.lyrics_loaded);
-        loaded_arc.store(false, Ordering::SeqCst);
-        if let Ok(mut l) = lyrics_arc.lock() {
-            l.clear();
-        }
+        let in_progress_arc = Arc::clone(&self.fetch_in_progress);
+        let failed_arc = Arc::clone(&self.fetch_failed);
 
-        if let Ok(mut st) = status_arc.lock() {
-            *st = "Loading lyrics...".to_string();
+        if !is_retry {
+            loaded_arc.store(false, Ordering::SeqCst);
+            if let Ok(mut l) = lyrics_arc.lock() {
+                l.clear();
+            }
+            if let Ok(mut st) = status_arc.lock() {
+                *st = "Loading lyrics...".to_string();
+            }
         }
 
         std::thread::spawn(move || {
-            let mut result = fetch_lyrics_multitier(&title, &artist, &album, duration_ms);
-            if result.is_none() {
-                std::thread::sleep(std::time::Duration::from_millis(800));
-                result = fetch_lyrics_multitier(&title, &artist, &album, duration_ms);
-            }
+            let result = fetch_lyrics_multitier(&title, &artist, &album, duration_ms);
+            in_progress_arc.store(false, Ordering::SeqCst);
 
             match result {
                 Some(lines) => {
@@ -79,11 +103,13 @@ impl MusicSection {
                         *l = lines;
                     }
                     loaded_arc.store(true, Ordering::SeqCst);
+                    failed_arc.store(false, Ordering::SeqCst);
                     if let Ok(mut st) = status_arc.lock() {
                         st.clear();
                     }
                 }
                 None => {
+                    failed_arc.store(true, Ordering::SeqCst);
                     if let Ok(mut st) = status_arc.lock() {
                         *st = "Lyrics not available".to_string();
                     }
@@ -685,87 +711,104 @@ fn parse_plain_lyrics(plain: &str, duration_ms: u64) -> Vec<LyricLine> {
         .collect()
 }
 
-fn clean_media_metadata(raw_title: &str, raw_artist: &str) -> (String, String) {
-    let mut title = raw_title.trim().to_string();
-    let mut artist = raw_artist.trim().to_string();
+fn strip_video_noise(s: &str) -> String {
+    let mut out = s.trim().to_string();
 
-    let artist_suspect = artist.is_empty()
-        || artist.eq_ignore_ascii_case("vevo")
-        || artist.to_ascii_lowercase().contains("topic")
-        || artist.to_ascii_lowercase().contains("records")
-        || artist.to_ascii_lowercase().contains("official")
-        || artist.to_ascii_lowercase().contains("music");
-
-    if (artist_suspect || artist.is_empty()) && title.contains(" - ") {
-        let parts: Vec<&str> = title.splitn(2, " - ").collect();
-        if parts.len() == 2 && !parts[0].trim().is_empty() && !parts[1].trim().is_empty() {
-            artist = parts[0].trim().to_string();
-            title = parts[1].trim().to_string();
+    let brackets: &[(&str, &str)] = &[("(", ")"), ("[", "]")];
+    for &(open, close) in brackets {
+        let mut changed = true;
+        while changed {
+            changed = false;
+            if let Some(start) = out.rfind(open) {
+                if let Some(rel_end) = out[start..].find(close) {
+                    let end = start + rel_end;
+                    let inner = out[start + open.len()..end].to_ascii_lowercase();
+                    let is_noise = inner.contains("video")
+                        || inner.contains("audio")
+                        || inner.contains("official")
+                        || inner.contains("lyric")
+                        || inner.contains("lyrics")
+                        || inner.contains("visualizer")
+                        || inner.contains("mv")
+                        || inner.contains("hd")
+                        || inner.contains("4k")
+                        || inner.contains("remaster")
+                        || inner.contains("live")
+                        || inner.contains("clip")
+                        || inner.contains("prod")
+                        || inner.contains("feat")
+                        || inner.contains("ft.");
+                    if is_noise {
+                        out.replace_range(start..end + close.len(), "");
+                        changed = true;
+                    }
+                }
+            }
         }
     }
 
-    let noise_patterns = [
-        "(official music video)",
-        "[official music video]",
-        "(official video)",
-        "[official video]",
-        "(official video hd)",
-        "[official video hd]",
-        "(official audio)",
-        "[official audio]",
-        "(official lyric video)",
-        "[official lyric video]",
-        "(lyric video)",
-        "[lyric video]",
-        "(lyrics video)",
-        "[lyrics video]",
-        "(lyrics)",
-        "[lyrics]",
-        "(music video)",
-        "[music video]",
-        "(visualizer)",
-        "[visualizer]",
-        "(audio)",
-        "[audio]",
-        "(mv)",
-        "[mv]",
-        "(hd)",
-        "[hd]",
-        "(4k)",
-        "[4k]",
-    ];
-
-    for pat in noise_patterns {
-        if let Some(pos) = title.to_ascii_lowercase().rfind(pat) {
-            title.replace_range(pos..pos + pat.len(), "");
-        }
+    if let Some(pos) = out.to_ascii_lowercase().rfind(" - remastered") {
+        out.truncate(pos);
     }
 
-    if let Some(pos) = title.to_ascii_lowercase().rfind(" - remastered") {
-        title.truncate(pos);
-    } else if let Some(pos) = title.to_ascii_lowercase().rfind("(remastered") {
-        title.truncate(pos);
-    }
-
-    (artist.trim().to_string(), title.trim().to_string())
+    out.trim().to_string()
 }
 
 fn fetch_lyrics_multitier(
-    title: &str,
-    artist: &str,
+    raw_title: &str,
+    raw_artist: &str,
     album: &str,
     duration_ms: u64,
 ) -> Option<Vec<LyricLine>> {
-    let (clean_artist, clean_title) = clean_media_metadata(title, artist);
+    let clean_full_title = strip_video_noise(raw_title);
     let duration_sec = if duration_ms > 0 { duration_ms / 1000 } else { 0 };
 
+    let mut candidates: Vec<(String, String)> = Vec::new();
+
+    // If title has " - ", split into (Artist, Title) - standard YouTube music format
+    if clean_full_title.contains(" - ") {
+        let parts: Vec<&str> = clean_full_title.splitn(2, " - ").collect();
+        let part_artist = parts[0].trim().to_string();
+        let part_title = parts[1].trim().to_string();
+        if !part_artist.is_empty() && !part_title.is_empty() {
+            candidates.push((part_artist, part_title));
+        }
+    }
+
+    // Also include (raw_artist, clean_full_title) if artist is not empty
+    if !raw_artist.is_empty() && !clean_full_title.is_empty() {
+        let clean_art = strip_video_noise(raw_artist);
+        if !candidates.iter().any(|(a, t)| a == &clean_art && t == &clean_full_title) {
+            candidates.push((clean_art, clean_full_title.clone()));
+        }
+    }
+
+    // Fallback if no split was possible
+    if candidates.is_empty() {
+        candidates.push((raw_artist.trim().to_string(), clean_full_title.clone()));
+    }
+
     let call_api = |url: &str| -> Option<serde_json::Value> {
-        let resp = ureq::get(url)
-            .set("User-Agent", "Nocan/1.1.0 (https://fph.my.id)")
-            .timeout(std::time::Duration::from_secs(4))
-            .call()
-            .ok()?;
-        resp.into_json::<serde_json::Value>().ok()
+        for attempt in 0..2 {
+            let resp = ureq::get(url)
+                .set("User-Agent", "Nocan/1.1.0 (https://fph.my.id)")
+                .timeout(std::time::Duration::from_secs(3))
+                .call();
+
+            match resp {
+                Ok(r) => {
+                    return r.into_json::<serde_json::Value>().ok();
+                }
+                Err(ureq::Error::Status(503, _)) | Err(ureq::Error::Status(429, _)) => {
+                    if attempt == 0 {
+                        // LRCLIB server overloaded: respect retry-after and pause 1s
+                        std::thread::sleep(std::time::Duration::from_millis(1000));
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        None
     };
 
     let extract_lyrics = |json: &serde_json::Value| -> Option<Vec<LyricLine>> {
@@ -803,30 +846,29 @@ fn fetch_lyrics_multitier(
         None
     };
 
-    // Strategy 1: Exact /api/get with album (matches fph-portfolio)
-    if !clean_artist.is_empty() && !clean_title.is_empty() && !album.is_empty() {
-        let mut url = format!(
-            "https://lrclib.net/api/get?artist_name={}&track_name={}&album_name={}",
-            url_encode(&clean_artist),
-            url_encode(&clean_title),
-            url_encode(album)
-        );
-        if duration_sec > 0 {
-            url.push_str(&format!("&duration={}", duration_sec));
-        }
-        if let Some(json) = call_api(&url) {
-            if let Some(lines) = extract_lyrics(&json) {
-                return Some(lines);
+    // Strategy 1: Exact /api/get for each candidate (matches fph-portfolio)
+    for (artist, title) in &candidates {
+        if !album.is_empty() {
+            let mut url = format!(
+                "https://lrclib.net/api/get?artist_name={}&track_name={}&album_name={}",
+                url_encode(artist),
+                url_encode(title),
+                url_encode(album)
+            );
+            if duration_sec > 0 {
+                url.push_str(&format!("&duration={}", duration_sec));
+            }
+            if let Some(json) = call_api(&url) {
+                if let Some(lines) = extract_lyrics(&json) {
+                    return Some(lines);
+                }
             }
         }
-    }
 
-    // Strategy 2: Exact /api/get without album (matches fph-portfolio fallback)
-    if !clean_artist.is_empty() && !clean_title.is_empty() {
         let mut url = format!(
             "https://lrclib.net/api/get?artist_name={}&track_name={}",
-            url_encode(&clean_artist),
-            url_encode(&clean_title)
+            url_encode(artist),
+            url_encode(title)
         );
         if duration_sec > 0 {
             url.push_str(&format!("&duration={}", duration_sec));
@@ -838,12 +880,12 @@ fn fetch_lyrics_multitier(
         }
     }
 
-    // Strategy 3: Search /api/search with track_name & artist_name
-    if !clean_artist.is_empty() && !clean_title.is_empty() {
+    // Strategy 2: Search /api/search with artist_name & track_name
+    for (artist, title) in &candidates {
         let url = format!(
             "https://lrclib.net/api/search?track_name={}&artist_name={}",
-            url_encode(&clean_title),
-            url_encode(&clean_artist)
+            url_encode(title),
+            url_encode(artist)
         );
         if let Some(json) = call_api(&url) {
             if let Some(lines) = extract_lyrics(&json) {
@@ -852,13 +894,10 @@ fn fetch_lyrics_multitier(
         }
     }
 
-    // Strategy 4: Search /api/search with general query q={clean_title} {clean_artist}
-    let query = format!("{} {}", clean_title, clean_artist).trim().to_string();
-    if !query.is_empty() {
-        let url = format!(
-            "https://lrclib.net/api/search?q={}",
-            url_encode(&query)
-        );
+    // Strategy 3: General query search /api/search?q={title}+{artist}
+    for (artist, title) in &candidates {
+        let q = format!("{} {}", title, artist).trim().to_string();
+        let url = format!("https://lrclib.net/api/search?q={}", url_encode(&q));
         if let Some(json) = call_api(&url) {
             if let Some(lines) = extract_lyrics(&json) {
                 return Some(lines);
@@ -866,12 +905,15 @@ fn fetch_lyrics_multitier(
         }
     }
 
-    // Strategy 5: If raw title differed from clean title, search q with raw title
-    if title != clean_title && !title.is_empty() {
-        let url = format!(
-            "https://lrclib.net/api/search?q={}",
-            url_encode(title)
-        );
+    // Strategy 4: Fallback - Search by title alone (crucial for songs like 'Beautiful in White' where album/artist varies)
+    for (_, title) in &candidates {
+        let url = format!("https://lrclib.net/api/search?track_name={}", url_encode(title));
+        if let Some(json) = call_api(&url) {
+            if let Some(lines) = extract_lyrics(&json) {
+                return Some(lines);
+            }
+        }
+        let url = format!("https://lrclib.net/api/search?q={}", url_encode(title));
         if let Some(json) = call_api(&url) {
             if let Some(lines) = extract_lyrics(&json) {
                 return Some(lines);
