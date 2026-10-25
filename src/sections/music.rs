@@ -43,7 +43,7 @@ impl MusicSection {
         if track.title.is_empty() {
             return;
         }
-        let key = format!("{}|{}", track.title, track.artist);
+        let key = format!("{}|{}|{}", track.title, track.artist, track.album);
         if key == self.last_fetched_key {
             return;
         }
@@ -51,6 +51,9 @@ impl MusicSection {
 
         let title = track.title.clone();
         let artist = track.artist.clone();
+        let album = track.album.clone();
+        let duration_ms = track.duration_ms;
+
         let lyrics_arc = Arc::clone(&self.lyrics);
         let status_arc = Arc::clone(&self.lyrics_status);
         let loaded_arc = Arc::clone(&self.lyrics_loaded);
@@ -60,41 +63,30 @@ impl MusicSection {
         }
 
         if let Ok(mut st) = status_arc.lock() {
-            *st = "Loading lyrics".to_string();
+            *st = "Loading lyrics...".to_string();
         }
 
         std::thread::spawn(move || {
-            let url = format!(
-                "https://lrclib.net/api/search?track_name={}&artist_name={}",
-                url_encode(&title),
-                url_encode(&artist)
-            );
-            let mut parsed_lines = Vec::new();
-            if let Ok(resp) = ureq::get(&url).call() {
-                if let Ok(json) = resp.into_json::<serde_json::Value>() {
-                    if let Some(arr) = json.as_array() {
-                        for item in arr {
-                            if let Some(synced) = item.get("syncedLyrics").and_then(|v| v.as_str()) {
-                                parsed_lines = parse_lrc(synced);
-                                if !parsed_lines.is_empty() {
-                                    break;
-                                }
-                            }
-                        }
+            let mut result = fetch_lyrics_multitier(&title, &artist, &album, duration_ms);
+            if result.is_none() {
+                std::thread::sleep(std::time::Duration::from_millis(800));
+                result = fetch_lyrics_multitier(&title, &artist, &album, duration_ms);
+            }
+
+            match result {
+                Some(lines) => {
+                    if let Ok(mut l) = lyrics_arc.lock() {
+                        *l = lines;
+                    }
+                    loaded_arc.store(true, Ordering::SeqCst);
+                    if let Ok(mut st) = status_arc.lock() {
+                        st.clear();
                     }
                 }
-            }
-            if parsed_lines.is_empty() {
-                if let Ok(mut st) = status_arc.lock() {
-                    *st = "Lyrics not available".to_string();
-                }
-            } else {
-                if let Ok(mut l) = lyrics_arc.lock() {
-                    *l = parsed_lines;
-                }
-                loaded_arc.store(true, Ordering::SeqCst);
-                if let Ok(mut st) = status_arc.lock() {
-                    st.clear();
+                None => {
+                    if let Ok(mut st) = status_arc.lock() {
+                        *st = "Lyrics not available".to_string();
+                    }
                 }
             }
         });
@@ -324,7 +316,10 @@ impl MusicSection {
             return None;
         }
         let lines = self.lyrics.lock().ok()?;
-        let idx = lines.iter().rposition(|l| track.position_ms >= l.time_ms)?;
+        if lines.is_empty() {
+            return None;
+        }
+        let idx = lines.iter().rposition(|l| track.position_ms >= l.time_ms).unwrap_or(0);
         Some(lines[idx].text.clone())
     }
 
@@ -609,22 +604,280 @@ fn parse_lrc(lrc: &str) -> Vec<LyricLine> {
     let mut out = Vec::new();
     for line in lrc.lines() {
         let line = line.trim();
-        if let (Some(open), Some(close)) = (line.find('['), line.find(']')) {
-            if open == 0 && close > 3 {
-                let tag = &line[1..close];
-                let text = line[close + 1..].trim().to_string();
-                if text.is_empty() {
-                    continue;
+        if line.is_empty() {
+            continue;
+        }
+        let mut rest = line;
+        let mut timestamps = Vec::new();
+        while let Some(open) = rest.find('[') {
+            if let Some(close) = rest[open..].find(']') {
+                let close = open + close;
+                let tag = &rest[open + 1..close];
+                if let Some(time_ms) = parse_lrc_timestamp(tag) {
+                    timestamps.push(time_ms);
                 }
-                let parts: Vec<&str> = tag.split(':').collect();
-                if parts.len() == 2 {
-                    if let (Ok(min), Ok(sec)) = (parts[0].parse::<u64>(), parts[1].parse::<f64>()) {
-                        let time_ms = min * 60_000 + (sec * 1000.0) as u64;
-                        out.push(LyricLine { time_ms, text });
+                rest = &rest[close + 1..];
+            } else {
+                break;
+            }
+        }
+        let text = rest.trim().to_string();
+        if text.is_empty() {
+            continue;
+        }
+        for time_ms in timestamps {
+            out.push(LyricLine {
+                time_ms,
+                text: text.clone(),
+            });
+        }
+    }
+    out.sort_by_key(|l| l.time_ms);
+    out
+}
+
+fn parse_lrc_timestamp(tag: &str) -> Option<u64> {
+    let parts: Vec<&str> = tag.split(':').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let min = parts[0].trim().parse::<u64>().ok()?;
+    let sec_parts: Vec<&str> = parts[1].trim().split('.').collect();
+    let sec = sec_parts[0].trim().parse::<u64>().ok()?;
+    let ms = if sec_parts.len() > 1 {
+        let mut ms_str = sec_parts[1].trim().to_string();
+        if ms_str.len() == 1 {
+            ms_str.push_str("00");
+        } else if ms_str.len() == 2 {
+            ms_str.push('0');
+        } else if ms_str.len() > 3 {
+            ms_str.truncate(3);
+        }
+        ms_str.parse::<u64>().unwrap_or(0)
+    } else {
+        0
+    };
+    Some(min * 60_000 + sec * 1_000 + ms)
+}
+
+fn parse_plain_lyrics(plain: &str, duration_ms: u64) -> Vec<LyricLine> {
+    let raw_lines: Vec<&str> = plain
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+    if raw_lines.is_empty() {
+        return Vec::new();
+    }
+    let count = raw_lines.len();
+    let step_ms = if duration_ms > 0 && count > 0 {
+        duration_ms / count as u64
+    } else {
+        4000
+    };
+    raw_lines
+        .into_iter()
+        .enumerate()
+        .map(|(i, text)| LyricLine {
+            time_ms: i as u64 * step_ms,
+            text: text.to_string(),
+        })
+        .collect()
+}
+
+fn clean_media_metadata(raw_title: &str, raw_artist: &str) -> (String, String) {
+    let mut title = raw_title.trim().to_string();
+    let mut artist = raw_artist.trim().to_string();
+
+    let artist_suspect = artist.is_empty()
+        || artist.eq_ignore_ascii_case("vevo")
+        || artist.to_ascii_lowercase().contains("topic")
+        || artist.to_ascii_lowercase().contains("records")
+        || artist.to_ascii_lowercase().contains("official")
+        || artist.to_ascii_lowercase().contains("music");
+
+    if (artist_suspect || artist.is_empty()) && title.contains(" - ") {
+        let parts: Vec<&str> = title.splitn(2, " - ").collect();
+        if parts.len() == 2 && !parts[0].trim().is_empty() && !parts[1].trim().is_empty() {
+            artist = parts[0].trim().to_string();
+            title = parts[1].trim().to_string();
+        }
+    }
+
+    let noise_patterns = [
+        "(official music video)",
+        "[official music video]",
+        "(official video)",
+        "[official video]",
+        "(official video hd)",
+        "[official video hd]",
+        "(official audio)",
+        "[official audio]",
+        "(official lyric video)",
+        "[official lyric video]",
+        "(lyric video)",
+        "[lyric video]",
+        "(lyrics video)",
+        "[lyrics video]",
+        "(lyrics)",
+        "[lyrics]",
+        "(music video)",
+        "[music video]",
+        "(visualizer)",
+        "[visualizer]",
+        "(audio)",
+        "[audio]",
+        "(mv)",
+        "[mv]",
+        "(hd)",
+        "[hd]",
+        "(4k)",
+        "[4k]",
+    ];
+
+    for pat in noise_patterns {
+        if let Some(pos) = title.to_ascii_lowercase().rfind(pat) {
+            title.replace_range(pos..pos + pat.len(), "");
+        }
+    }
+
+    if let Some(pos) = title.to_ascii_lowercase().rfind(" - remastered") {
+        title.truncate(pos);
+    } else if let Some(pos) = title.to_ascii_lowercase().rfind("(remastered") {
+        title.truncate(pos);
+    }
+
+    (artist.trim().to_string(), title.trim().to_string())
+}
+
+fn fetch_lyrics_multitier(
+    title: &str,
+    artist: &str,
+    album: &str,
+    duration_ms: u64,
+) -> Option<Vec<LyricLine>> {
+    let (clean_artist, clean_title) = clean_media_metadata(title, artist);
+    let duration_sec = if duration_ms > 0 { duration_ms / 1000 } else { 0 };
+
+    let call_api = |url: &str| -> Option<serde_json::Value> {
+        let resp = ureq::get(url)
+            .set("User-Agent", "Nocan/1.1.0 (https://fph.my.id)")
+            .timeout(std::time::Duration::from_secs(4))
+            .call()
+            .ok()?;
+        resp.into_json::<serde_json::Value>().ok()
+    };
+
+    let extract_lyrics = |json: &serde_json::Value| -> Option<Vec<LyricLine>> {
+        if let Some(arr) = json.as_array() {
+            for item in arr {
+                if let Some(synced) = item.get("syncedLyrics").and_then(|v| v.as_str()) {
+                    let lines = parse_lrc(synced);
+                    if !lines.is_empty() {
+                        return Some(lines);
                     }
                 }
             }
+            for item in arr {
+                if let Some(plain) = item.get("plainLyrics").and_then(|v| v.as_str()) {
+                    let lines = parse_plain_lyrics(plain, duration_ms);
+                    if !lines.is_empty() {
+                        return Some(lines);
+                    }
+                }
+            }
+        } else if json.is_object() {
+            if let Some(synced) = json.get("syncedLyrics").and_then(|v| v.as_str()) {
+                let lines = parse_lrc(synced);
+                if !lines.is_empty() {
+                    return Some(lines);
+                }
+            }
+            if let Some(plain) = json.get("plainLyrics").and_then(|v| v.as_str()) {
+                let lines = parse_plain_lyrics(plain, duration_ms);
+                if !lines.is_empty() {
+                    return Some(lines);
+                }
+            }
+        }
+        None
+    };
+
+    // Strategy 1: Exact /api/get with album (matches fph-portfolio)
+    if !clean_artist.is_empty() && !clean_title.is_empty() && !album.is_empty() {
+        let mut url = format!(
+            "https://lrclib.net/api/get?artist_name={}&track_name={}&album_name={}",
+            url_encode(&clean_artist),
+            url_encode(&clean_title),
+            url_encode(album)
+        );
+        if duration_sec > 0 {
+            url.push_str(&format!("&duration={}", duration_sec));
+        }
+        if let Some(json) = call_api(&url) {
+            if let Some(lines) = extract_lyrics(&json) {
+                return Some(lines);
+            }
         }
     }
-    out
+
+    // Strategy 2: Exact /api/get without album (matches fph-portfolio fallback)
+    if !clean_artist.is_empty() && !clean_title.is_empty() {
+        let mut url = format!(
+            "https://lrclib.net/api/get?artist_name={}&track_name={}",
+            url_encode(&clean_artist),
+            url_encode(&clean_title)
+        );
+        if duration_sec > 0 {
+            url.push_str(&format!("&duration={}", duration_sec));
+        }
+        if let Some(json) = call_api(&url) {
+            if let Some(lines) = extract_lyrics(&json) {
+                return Some(lines);
+            }
+        }
+    }
+
+    // Strategy 3: Search /api/search with track_name & artist_name
+    if !clean_artist.is_empty() && !clean_title.is_empty() {
+        let url = format!(
+            "https://lrclib.net/api/search?track_name={}&artist_name={}",
+            url_encode(&clean_title),
+            url_encode(&clean_artist)
+        );
+        if let Some(json) = call_api(&url) {
+            if let Some(lines) = extract_lyrics(&json) {
+                return Some(lines);
+            }
+        }
+    }
+
+    // Strategy 4: Search /api/search with general query q={clean_title} {clean_artist}
+    let query = format!("{} {}", clean_title, clean_artist).trim().to_string();
+    if !query.is_empty() {
+        let url = format!(
+            "https://lrclib.net/api/search?q={}",
+            url_encode(&query)
+        );
+        if let Some(json) = call_api(&url) {
+            if let Some(lines) = extract_lyrics(&json) {
+                return Some(lines);
+            }
+        }
+    }
+
+    // Strategy 5: If raw title differed from clean title, search q with raw title
+    if title != clean_title && !title.is_empty() {
+        let url = format!(
+            "https://lrclib.net/api/search?q={}",
+            url_encode(title)
+        );
+        if let Some(json) = call_api(&url) {
+            if let Some(lines) = extract_lyrics(&json) {
+                return Some(lines);
+            }
+        }
+    }
+
+    None
 }

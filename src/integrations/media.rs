@@ -56,10 +56,11 @@ impl MediaService {
 
             let mut cached_key = String::new();
             let mut cached_thumb: Option<Arc<Vec<u8>>> = None;
+            let mut thumb_retry_count: u32 = 0;
 
             let _ = std::fs::write("C:\\Users\\abufa\\AppData\\Local\\Nocan\\nocan_media.log", "Media service thread started\n");
             while running.load(Ordering::SeqCst) {
-                match poll_current_media(&mut cached_key, &mut cached_thumb) {
+                match poll_current_media(&mut cached_key, &mut cached_thumb, &mut thumb_retry_count) {
                     Ok(info) => {
                         if let Ok(mut lock) = current_track.lock() {
                             *lock = info;
@@ -118,6 +119,7 @@ impl MediaService {
 fn poll_current_media(
     cached_key: &mut String,
     cached_thumb: &mut Option<Arc<Vec<u8>>>,
+    thumb_retry_count: &mut u32,
 ) -> windows::core::Result<MediaTrackInfo> {
     let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.get()?;
     let session = manager.GetCurrentSession()?;
@@ -140,12 +142,20 @@ fn poll_current_media(
         .unwrap_or_default();
 
     let key = format!("{}|{}", title, artist);
-    if !title.is_empty() && key != *cached_key {
-        *cached_key = key;
-        *cached_thumb = decode_thumbnail_62x62(&media_props).ok().map(Arc::new);
-    } else if title.is_empty() {
+    if !title.is_empty() {
+        if key != *cached_key {
+            *cached_key = key;
+            *thumb_retry_count = 0;
+            *cached_thumb = decode_thumbnail_62x62(&media_props).ok().map(Arc::new);
+        } else if cached_thumb.is_none() && *thumb_retry_count < 12 {
+            // Windows GSMTC thumbnail streams may become available a few ticks after track metadata
+            *thumb_retry_count += 1;
+            *cached_thumb = decode_thumbnail_62x62(&media_props).ok().map(Arc::new);
+        }
+    } else {
         cached_key.clear();
         *cached_thumb = None;
+        *thumb_retry_count = 0;
     }
 
     let mut position_ms = 0;

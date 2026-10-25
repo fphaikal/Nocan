@@ -758,7 +758,8 @@ impl NotchWindow {
         {
             let track = self.media_service.get_info();
             self.music_sec.update_lyrics(&track);
-            let color_key = format!("{}|{}", track.title, track.artist);
+            let has_thumb = track.thumbnail_bgra.is_some();
+            let color_key = format!("{}|{}|{}", track.title, track.artist, has_thumb);
             if color_key != self.lyric_color_key {
                 self.lyric_color_key = color_key;
                 self.lyric_color_target = track
