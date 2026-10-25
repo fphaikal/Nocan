@@ -21,8 +21,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WS_EX_TOPMOST, WS_POPUP,
 };
 
-const WM_MOUSELEAVE: u32 = 0x02A3;
-
 use crate::graphics::composition::CompositionTarget;
 use crate::graphics::d2d::D2DContext;
 use crate::graphics::d3d::D3DContext;
@@ -37,22 +35,17 @@ use crate::sections::shelf::ShelfSection;
 use crate::sections::todo::TodoSection;
 use crate::sections::water::WaterSection;
 
-const COLLAPSED_W: f32 = 240.0;
+const COLLAPSED_W: f32 = 220.0;
 const COLLAPSED_H: f32 = 32.0;
 const EXPANDED_W: f32 = 420.0;
-const EXPANDED_H: f32 = 138.0;
+const EXPANDED_H: f32 = 140.0;
 
 const WM_TRAYICON: u32 = WM_USER + 101;
 const IDM_OPEN: usize = 1001;
 const IDM_FOLDER: usize = 1002;
 const IDM_EXIT: usize = 1003;
 
-fn log_win(msg: &str) {
-    use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("C:\\Users\\abufa\\AppData\\Local\\Nocan\\nocan_debug.log") {
-        let _ = writeln!(f, "[{}] {}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(), msg);
-    }
-}
+const WM_MOUSELEAVE: u32 = 0x02A3;
 
 pub struct NotchWindow {
     pub hwnd: HWND,
@@ -79,7 +72,6 @@ pub struct NotchWindow {
 
 impl NotchWindow {
     pub fn create(media_service: MediaService) -> Result<HWND> {
-        log_win("NotchWindow::create starting");
         let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)?.into() };
         let class_name: Vec<u16> = "NotchWindow\0".encode_utf16().collect();
 
@@ -127,7 +119,6 @@ impl NotchWindow {
                 None,
             )?
         };
-        log_win(&format!("HWND created: {:?}", hwnd));
 
         unsafe {
             DragAcceptFiles(hwnd, true);
@@ -148,20 +139,14 @@ impl NotchWindow {
             }
             let _ = Shell_NotifyIconW(NIM_ADD, &nid);
         }
-        log_win("Tray icon added");
 
         let d3d = D3DContext::new(hwnd, COLLAPSED_W as u32, COLLAPSED_H as u32)?;
-        log_win("D3DContext created");
         let mut d2d = D2DContext::new(&d3d.dxgi_device)?;
-        log_win("D2DContext created");
         let surface = d3d.get_surface()?;
         d2d.set_target_surface(&surface)?;
-        log_win("Surface set to D2D");
 
         let dwrite = DWriteContext::new()?;
-        log_win("DWriteContext created");
         let comp = CompositionTarget::new(hwnd, &d3d.dxgi_device, &d3d.swapchain)?;
-        log_win("CompositionTarget created");
 
         let notch = Box::new(Self {
             hwnd,
@@ -192,7 +177,6 @@ impl NotchWindow {
             let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
             windows::Win32::UI::WindowsAndMessaging::SetTimer(hwnd, 1, 16, None); // ~60 FPS
         }
-        log_win("ShowWindow and SetTimer configured");
 
         Ok(hwnd)
     }
@@ -210,12 +194,6 @@ pub fn run_message_loop() {
 
 impl NotchWindow {
     pub fn tick_frame(&mut self) {
-        static TICK_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let count = TICK_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if count < 5 || count % 120 == 0 {
-            log_win(&format!("tick_frame #{}", count));
-        }
-
         // Animation smoothing
         let target_w = if self.is_hovered { EXPANDED_W } else { COLLAPSED_W };
         let target_h = if self.is_hovered { EXPANDED_H } else { COLLAPSED_H };
@@ -257,9 +235,7 @@ impl NotchWindow {
             }
             // Resize swapchain
             self.d2d.reset_target();
-            if let Err(e) = self.d3d.resize(new_w as u32, new_h as u32) {
-                let _ = std::fs::write("C:\\Users\\abufa\\AppData\\Local\\Nocan\\nocan_err.log", format!("resize err: {:?}", e));
-            }
+            let _ = self.d3d.resize(new_w as u32, new_h as u32);
             if let Ok(surface) = self.d3d.get_surface() {
                 let _ = self.d2d.set_target_surface(&surface);
             }
@@ -287,90 +263,62 @@ impl NotchWindow {
         let h = self.current_h;
 
         self.d2d.begin_draw();
-        // Clear transparent
+        // Clear transparent surface
         self.d2d.clear(D2D1_COLOR_F { r: 0.0, g: 0.0, b: 0.0, a: 0.0 });
 
-        // Obsidian Notch Body Brush: #0D0D11 with subtle corner radius
-        let body_brush = self.d2d.create_solid_brush(D2D1_COLOR_F {
-            r: 13.0 / 255.0,
-            g: 13.0 / 255.0,
-            b: 17.0 / 255.0,
-            a: 0.98,
+        // Pure Jet Black Background: RGB(0, 0, 0)
+        let notch_bg = self.d2d.create_solid_brush(D2D1_COLOR_F {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
         }).ok();
 
-        // Border Brush: #2B2323
-        let border_brush = self.d2d.create_solid_brush(D2D1_COLOR_F {
-            r: 43.0 / 255.0,
-            g: 35.0 / 255.0,
-            b: 35.0 / 255.0,
-            a: 0.85,
-        }).ok();
-
-        // Text & Accent Brushes
+        // Typography and Accent Brushes
         let white_brush = self.d2d.create_solid_brush(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 0.95 }).ok();
-        let dim_brush = self.d2d.create_solid_brush(D2D1_COLOR_F { r: 160.0 / 255.0, g: 160.0 / 255.0, b: 170.0 / 255.0, a: 0.85 }).ok();
-        let card_brush = self.d2d.create_solid_brush(D2D1_COLOR_F {
-            r: 28.0 / 255.0,
-            g: 23.0 / 255.0,
-            b: 23.0 / 255.0,
-            a: 0.75,
-        }).ok();
-        let accent_brush = self.d2d.create_solid_brush(D2D1_COLOR_F {
-            r: 235.0 / 255.0,
-            g: 90.0 / 255.0,
-            b: 60.0 / 255.0,
-            a: 1.0,
-        }).ok();
-        let water_brush = self.d2d.create_solid_brush(D2D1_COLOR_F {
-            r: 50.0 / 255.0,
-            g: 150.0 / 255.0,
-            b: 255.0 / 255.0,
-            a: 1.0,
-        }).ok();
-        let green_bg_brush = self.d2d.create_solid_brush(D2D1_COLOR_F {
-            r: 34.0 / 255.0,
-            g: 61.0 / 255.0,
-            b: 30.0 / 255.0,
-            a: 0.90,
-        }).ok();
-        let green_text_brush = self.d2d.create_solid_brush(D2D1_COLOR_F {
-            r: 130.0 / 255.0,
-            g: 240.0 / 255.0,
-            b: 130.0 / 255.0,
-            a: 1.0,
-        }).ok();
+        let dim_brush = self.d2d.create_solid_brush(D2D1_COLOR_F { r: 180.0 / 255.0, g: 180.0 / 255.0, b: 180.0 / 255.0, a: 0.70 }).ok();
+        let inactive_dot_brush = self.d2d.create_solid_brush(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 0.25 }).ok();
+        let chevron_brush = self.d2d.create_solid_brush(D2D1_COLOR_F { r: 120.0 / 255.0, g: 120.0 / 255.0, b: 120.0 / 255.0, a: 0.65 }).ok();
+        let green_dot_brush = self.d2d.create_solid_brush(D2D1_COLOR_F { r: 39.0 / 255.0, g: 195.0 / 255.0, b: 74.0 / 255.0, a: 1.0 }).ok();
+        let tomato_brush = self.d2d.create_solid_brush(D2D1_COLOR_F { r: 249.0 / 255.0, g: 83.0 / 255.0, b: 83.0 / 255.0, a: 1.0 }).ok();
+        let water_brush = self.d2d.create_solid_brush(D2D1_COLOR_F { r: 52.0 / 255.0, g: 152.0 / 255.0, b: 219.0 / 255.0, a: 1.0 }).ok();
+        let btn_dark_brush = self.d2d.create_solid_brush(D2D1_COLOR_F { r: 67.0 / 255.0, g: 67.0 / 255.0, b: 67.0 / 255.0, a: 1.0 }).ok();
+        let subtle_bg_brush = self.d2d.create_solid_brush(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 0.12 }).ok();
+        let bot_circle_brush = self.d2d.create_solid_brush(D2D1_COLOR_F { r: 70.0 / 255.0, g: 50.0 / 255.0, b: 120.0 / 255.0, a: 1.0 }).ok();
+        let green_badge_bg = self.d2d.create_solid_brush(D2D1_COLOR_F { r: 34.0 / 255.0, g: 61.0 / 255.0, b: 30.0 / 255.0, a: 0.90 }).ok();
+        let green_badge_text = self.d2d.create_solid_brush(D2D1_COLOR_F { r: 130.0 / 255.0, g: 240.0 / 255.0, b: 130.0 / 255.0, a: 1.0 }).ok();
 
-        if let (Some(body_b), Some(border_b), Some(white_b), Some(dim_b), Some(card_b)) = (
-            &body_brush,
-            &border_brush,
+        if let (Some(bg), Some(white_b), Some(dim_b), Some(dot_inactive)) = (
+            &notch_bg,
             &white_brush,
             &dim_brush,
-            &card_brush,
+            &inactive_dot_brush,
         ) {
-            // Draw Notch Body (rounded bottom corners)
+            // Draw Authentic Pure Black Notch Body
             let notch_rect = D2D_RECT_F {
-                left: 1.0,
+                left: 0.0,
                 top: 0.0,
-                right: w - 1.0,
-                bottom: h - 1.0,
+                right: w,
+                bottom: h,
             };
-            let corner_r = if self.is_hovered { 16.0 } else { 12.0 };
-            self.d2d.fill_rounded_rect(notch_rect, corner_r, corner_r, body_b);
-            self.d2d.draw_rounded_rect(notch_rect, corner_r, corner_r, border_b, 1.0);
+
+            let corner_r = if self.is_hovered { 32.0 } else { 16.0 };
+            self.d2d.fill_rounded_rect(notch_rect, corner_r, corner_r, bg);
 
             if !self.is_hovered {
-                // Collapsed State: Top Status Bar only
+                // Collapsed State: Dynamic Island compact pill
                 self.draw_collapsed_bar(w, h, white_b, dim_b);
             } else {
-                // Expanded State: Top status bar + Active Section + Bottom Carousel
-                self.draw_top_bar(w, white_b, dim_b);
+                // Expanded State:
+                // 1. Top bar: Green indicator dot + Date & Time + Battery
+                self.draw_expanded_top_bar(w, dim_b, green_dot_brush.as_ref().unwrap_or(white_b));
 
-                // Section Bounds: y from 22.0 to h - 22.0
+                // 2. Render Active Section
                 let sec_bounds = D2D_RECT_F {
                     left: 0.0,
-                    top: 22.0,
+                    top: 0.0,
                     right: w,
-                    bottom: h - 20.0,
+                    bottom: h,
                 };
 
                 let track = self.media_service.get_info();
@@ -383,8 +331,8 @@ impl NotchWindow {
                             &track,
                             white_b,
                             dim_b,
-                            card_b,
-                            accent_brush.as_ref().unwrap_or(white_b),
+                            subtle_bg_brush.as_ref().unwrap_or(dim_b),
+                            subtle_bg_brush.as_ref().unwrap_or(dim_b),
                         );
                     }
                     1 => {
@@ -394,8 +342,8 @@ impl NotchWindow {
                             sec_bounds,
                             white_b,
                             dim_b,
-                            card_b,
-                            accent_brush.as_ref().unwrap_or(white_b),
+                            tomato_brush.as_ref().unwrap_or(white_b),
+                            btn_dark_brush.as_ref().unwrap_or(dim_b),
                         );
                     }
                     2 => {
@@ -405,8 +353,8 @@ impl NotchWindow {
                             sec_bounds,
                             white_b,
                             dim_b,
-                            card_b,
                             water_brush.as_ref().unwrap_or(white_b),
+                            btn_dark_brush.as_ref().unwrap_or(dim_b),
                         );
                     }
                     3 => {
@@ -416,8 +364,8 @@ impl NotchWindow {
                             sec_bounds,
                             white_b,
                             dim_b,
-                            card_b,
-                            accent_brush.as_ref().unwrap_or(white_b),
+                            green_dot_brush.as_ref().unwrap_or(white_b),
+                            subtle_bg_brush.as_ref().unwrap_or(dim_b),
                         );
                     }
                     4 => {
@@ -427,9 +375,9 @@ impl NotchWindow {
                             sec_bounds,
                             white_b,
                             dim_b,
-                            card_b,
-                            green_bg_brush.as_ref().unwrap_or(card_b),
-                            green_text_brush.as_ref().unwrap_or(white_b),
+                            bot_circle_brush.as_ref().unwrap_or(white_b),
+                            green_badge_bg.as_ref().unwrap_or(dim_b),
+                            green_badge_text.as_ref().unwrap_or(white_b),
                         );
                     }
                     5 => {
@@ -439,30 +387,30 @@ impl NotchWindow {
                             sec_bounds,
                             white_b,
                             dim_b,
-                            card_b,
+                            subtle_bg_brush.as_ref().unwrap_or(dim_b),
+                            subtle_bg_brush.as_ref().unwrap_or(dim_b),
                         );
                     }
                     _ => {}
                 }
 
-                // Draw Carousel Navigation & Dots at the bottom
-                self.carousel.dots.draw(&self.d2d, w, h, white_b, dim_b);
-                self.carousel.nav.draw(&self.d2d, &self.dwrite, w, h, white_b, card_b);
-            }
-        }
+                // 3. Navigation Chevrons ‹ and › on the left and right
+                self.carousel.nav.draw(
+                    &self.d2d,
+                    &self.dwrite,
+                    w,
+                    h,
+                    chevron_brush.as_ref().unwrap_or(dim_b),
+                    white_b,
+                );
 
-        static RENDER_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let rc = RENDER_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if rc < 5 {
-            log_win(&format!("render() #{}", rc));
+                // 4. Carousel 6-Dots Indicator at the bottom
+                self.carousel.dots.draw(&self.d2d, w, h, white_b, dot_inactive);
+            }
         }
 
         let _ = self.d2d.end_draw();
         let _ = self.d3d.present();
-
-        if rc < 5 {
-            log_win(&format!("render() #{} complete", rc));
-        }
     }
 
     fn draw_collapsed_bar(
@@ -476,7 +424,6 @@ impl NotchWindow {
         let track = self.media_service.get_info();
 
         if track.is_playing && !track.title.is_empty() {
-            // Show playing track icon & title snippet
             let icon_rect = D2D_RECT_F {
                 left: 14.0,
                 top: 6.0,
@@ -488,22 +435,21 @@ impl NotchWindow {
             let title_rect = D2D_RECT_F {
                 left: 36.0,
                 top: 6.0,
-                right: w - 40.0,
+                right: w - 46.0,
                 bottom: h - 6.0,
             };
             self.dwrite.draw_text(&self.d2d.context, &track.title, title_rect, white_brush, &self.dwrite.format_regular);
         } else {
-            // Show Date/Time in Center
             let time_rect = D2D_RECT_F {
-                left: center_x - 80.0,
+                left: center_x - 70.0,
                 top: 6.0,
-                right: center_x + 80.0,
+                right: center_x + 70.0,
                 bottom: h - 6.0,
             };
             self.dwrite.draw_text(&self.d2d.context, &self.system_status.time_str, time_rect, white_brush, &self.dwrite.format_center);
         }
 
-        // Battery on right
+        // Battery percentage on right
         if let Some(pct) = self.system_status.battery_percent {
             let bat_str = if self.system_status.is_charging {
                 format!("⚡{}%", pct)
@@ -520,44 +466,39 @@ impl NotchWindow {
         }
     }
 
-    fn draw_top_bar(
+    fn draw_expanded_top_bar(
         &self,
         w: f32,
-        _white_brush: &ID2D1SolidColorBrush,
         dim_brush: &ID2D1SolidColorBrush,
+        green_brush: &ID2D1SolidColorBrush,
     ) {
         let center_x = w / 2.0;
 
-        // Current Date & Time: e.g. "Sun 25 Oct 2026 16:08"
-        let time_rect = D2D_RECT_F {
-            left: center_x - 110.0,
-            top: 4.0,
-            right: center_x + 110.0,
-            bottom: 20.0,
-        };
-        self.dwrite.draw_text(&self.d2d.context, &self.system_status.time_str, time_rect, dim_brush, &self.dwrite.format_small);
+        // Tiny green online/status dot at x=138, y=14
+        self.d2d.fill_ellipse(center_x - 72.0, 14.0, 2.5, 2.5, green_brush);
 
-        // Network status on left
-        let net_rect = D2D_RECT_F {
-            left: 18.0,
-            top: 4.0,
-            right: 80.0,
-            bottom: 20.0,
+        // Date & Time in the center: "@ Sun 25 Oct 2026 16:40"
+        let date_time_str = format!("@ {}", self.system_status.time_str);
+        let time_rect = D2D_RECT_F {
+            left: center_x - 66.0,
+            top: 7.0,
+            right: center_x + 90.0,
+            bottom: 23.0,
         };
-        self.dwrite.draw_text(&self.d2d.context, "● Online", net_rect, dim_brush, &self.dwrite.format_small);
+        self.dwrite.draw_text(&self.d2d.context, &date_time_str, time_rect, dim_brush, &self.dwrite.format_small);
 
         // Battery status on right
         if let Some(pct) = self.system_status.battery_percent {
             let bat_str = if self.system_status.is_charging {
-                format!("⚡ {}%", pct)
+                format!("⚡{}%", pct)
             } else {
-                format!("🔋 {}%", pct)
+                format!("🔋{}%", pct)
             };
             let bat_rect = D2D_RECT_F {
-                left: w - 80.0,
-                top: 4.0,
-                right: w - 18.0,
-                bottom: 20.0,
+                left: w - 50.0,
+                top: 7.0,
+                right: w - 12.0,
+                bottom: 23.0,
             };
             self.dwrite.draw_text(&self.d2d.context, &bat_str, bat_rect, dim_brush, &self.dwrite.format_small);
         }
@@ -590,10 +531,6 @@ unsafe extern "system" fn wnd_proc(
     let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, GWLP_USERDATA);
     if ptr != 0 {
         let notch = &mut *(ptr as *mut NotchWindow);
-
-        if msg != WM_TIMER && msg != WM_MOUSEMOVE {
-            log_win(&format!("wnd_proc msg: 0x{:04X}", msg));
-        }
 
         match msg {
             WM_TIMER => {
@@ -636,9 +573,9 @@ unsafe extern "system" fn wnd_proc(
 
                 let sec_bounds = D2D_RECT_F {
                     left: 0.0,
-                    top: 22.0,
+                    top: 0.0,
                     right: notch.current_w,
-                    bottom: notch.current_h - 20.0,
+                    bottom: notch.current_h,
                 };
 
                 match notch.carousel.current_section {

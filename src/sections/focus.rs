@@ -42,7 +42,6 @@ impl FocusSection {
                     self.last_tick = Some(now);
 
                     if self.remaining_secs == 0 {
-                        // Switch mode
                         match self.mode {
                             PomodoroMode::Focus => {
                                 self.sessions_completed += 1;
@@ -94,110 +93,114 @@ impl FocusSection {
         bounds: D2D_RECT_F,
         white_brush: &ID2D1SolidColorBrush,
         dim_brush: &ID2D1SolidColorBrush,
-        card_brush: &ID2D1SolidColorBrush,
-        accent_brush: &ID2D1SolidColorBrush,
+        tomato_brush: &ID2D1SolidColorBrush,
+        btn_dark_brush: &ID2D1SolidColorBrush,
     ) {
         let left = bounds.left;
         let top = bounds.top;
-        let right = bounds.right;
-        let center_x = (left + right) / 2.0;
 
-        // Header / Label on top left
-        let header_rect = D2D_RECT_F {
+        // Section Title: "Pomodoro" at x=24, y=12
+        let title_rect = D2D_RECT_F {
             left: left + 24.0,
             top: top + 10.0,
-            right: left + 150.0,
-            bottom: top + 24.0,
+            right: left + 140.0,
+            bottom: top + 26.0,
         };
-        let mode_label = match self.mode {
-            PomodoroMode::Focus => "Pomodoro Focus",
-            PomodoroMode::ShortBreak => "Short Break",
-            PomodoroMode::LongBreak => "Long Break",
-        };
-        dwrite.draw_text(&d2d.context, mode_label, header_rect, dim_brush, &dwrite.format_small);
+        dwrite.draw_text(&d2d.context, "Pomodoro", title_rect, white_brush, &dwrite.format_title);
 
-        // Session counter on top right
-        let session_rect = D2D_RECT_F {
-            left: right - 120.0,
-            top: top + 10.0,
-            right: right - 24.0,
-            bottom: top + 24.0,
-        };
-        let session_str = format!("Cycle: {} / 4", (self.sessions_completed % 4) + 1);
-        dwrite.draw_text(&d2d.context, &session_str, session_rect, dim_brush, &dwrite.format_small);
+        // Circular Tomato / Timer Graphic on Left at x=44, y=32, size 68x68
+        let tomato_center_x = left + 44.0 + 34.0;
+        let tomato_center_y = top + 32.0 + 34.0;
+        d2d.fill_ellipse(tomato_center_x, tomato_center_y, 32.0, 32.0, tomato_brush);
 
-        // Big Countdown Display in center
+        // Tomato leaf / icon inside
+        let tomato_icon_rect = D2D_RECT_F {
+            left: tomato_center_x - 16.0,
+            top: tomato_center_y - 14.0,
+            right: tomato_center_x + 16.0,
+            bottom: tomato_center_y + 14.0,
+        };
+        dwrite.draw_text(&d2d.context, "🍅", tomato_icon_rect, white_brush, &dwrite.format_center);
+
+        // Right side: Countdown and controls (x=210..380)
         let min = self.remaining_secs / 60;
         let sec = self.remaining_secs % 60;
         let time_str = format!("{:02}:{:02}", min, sec);
 
         let time_rect = D2D_RECT_F {
-            left: center_x - 100.0,
-            top: top + 22.0,
-            right: center_x + 100.0,
-            bottom: top + 52.0,
+            left: left + 215.0,
+            top: top + 30.0,
+            right: left + 360.0,
+            bottom: top + 56.0,
         };
         dwrite.draw_text(&d2d.context, &time_str, time_rect, white_brush, &dwrite.format_big);
 
-        // Status text below time
+        // Subtitle "Focus time" or "Break"
         let sub_rect = D2D_RECT_F {
-            left: center_x - 80.0,
-            top: top + 52.0,
-            right: center_x + 80.0,
-            bottom: top + 66.0,
+            left: left + 217.0,
+            top: top + 58.0,
+            right: left + 360.0,
+            bottom: top + 74.0,
         };
-        let sub_text = if self.is_running { "Focus time" } else { "Paused" };
-        dwrite.draw_text(&d2d.context, sub_text, sub_rect, dim_brush, &dwrite.format_center);
+        let sub_text = match self.mode {
+            PomodoroMode::Focus => {
+                if self.is_running { "Focus time" } else { "Focus Time • Paused" }
+            }
+            PomodoroMode::ShortBreak => "Short Break",
+            PomodoroMode::LongBreak => "Long Break",
+        };
+        dwrite.draw_text(&d2d.context, sub_text, sub_rect, dim_brush, &dwrite.format_regular);
 
-        // Interactive Buttons
-        let btn_y = top + 68.0;
+        // Action Buttons at y=86
+        let btn_y = top + 84.0;
+
+        // Start / Pause red pill button
         let start_btn_rect = D2D_RECT_F {
-            left: center_x - 55.0,
+            left: left + 215.0,
             top: btn_y,
-            right: center_x - 5.0,
-            bottom: btn_y + 22.0,
+            right: left + 280.0,
+            bottom: btn_y + 26.0,
         };
-        d2d.fill_rounded_rect(start_btn_rect, 4.0, 4.0, if self.is_running { card_brush } else { accent_brush });
+        d2d.fill_rounded_rect(start_btn_rect, 13.0, 13.0, tomato_brush);
 
-        let start_label_rect = D2D_RECT_F {
+        let start_label = if self.is_running { "Pause" } else { "Start" };
+        let start_text_rect = D2D_RECT_F {
             left: start_btn_rect.left,
-            top: start_btn_rect.top + 2.0,
+            top: start_btn_rect.top + 3.0,
             right: start_btn_rect.right,
             bottom: start_btn_rect.bottom,
         };
-        let start_btn_text = if self.is_running { "Pause" } else { "Start" };
-        dwrite.draw_text(&d2d.context, start_btn_text, start_label_rect, white_brush, &dwrite.format_center);
+        dwrite.draw_text(&d2d.context, start_label, start_text_rect, white_brush, &dwrite.format_button);
 
+        // Reset dark pill button
         let reset_btn_rect = D2D_RECT_F {
-            left: center_x + 5.0,
+            left: left + 288.0,
             top: btn_y,
-            right: center_x + 55.0,
-            bottom: btn_y + 22.0,
+            right: left + 362.0,
+            bottom: btn_y + 26.0,
         };
-        d2d.fill_rounded_rect(reset_btn_rect, 4.0, 4.0, card_brush);
+        d2d.fill_rounded_rect(reset_btn_rect, 13.0, 13.0, btn_dark_brush);
 
-        let reset_label_rect = D2D_RECT_F {
+        let reset_text_rect = D2D_RECT_F {
             left: reset_btn_rect.left,
-            top: reset_btn_rect.top + 2.0,
+            top: reset_btn_rect.top + 3.0,
             right: reset_btn_rect.right,
             bottom: reset_btn_rect.bottom,
         };
-        dwrite.draw_text(&d2d.context, "Reset", reset_label_rect, white_brush, &dwrite.format_center);
+        dwrite.draw_text(&d2d.context, "Reset", reset_text_rect, white_brush, &dwrite.format_button);
     }
 
     pub fn on_click(&mut self, bounds: D2D_RECT_F, x: f32, y: f32) -> bool {
         let left = bounds.left;
         let top = bounds.top;
-        let right = bounds.right;
-        let center_x = (left + right) / 2.0;
+        let btn_y = top + 84.0;
 
-        let btn_y = top + 68.0;
-        if y >= btn_y && y <= btn_y + 22.0 {
-            if x >= center_x - 55.0 && x <= center_x - 5.0 {
+        if y >= btn_y - 2.0 && y <= btn_y + 28.0 {
+            if x >= left + 215.0 && x <= left + 280.0 {
                 self.toggle_start_pause();
                 return true;
             }
-            if x >= center_x + 5.0 && x <= center_x + 55.0 {
+            if x >= left + 288.0 && x <= left + 362.0 {
                 self.reset();
                 return true;
             }

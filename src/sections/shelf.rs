@@ -79,73 +79,71 @@ impl ShelfSection {
         bounds: D2D_RECT_F,
         white_brush: &ID2D1SolidColorBrush,
         dim_brush: &ID2D1SolidColorBrush,
-        card_brush: &ID2D1SolidColorBrush,
+        drop_bg_brush: &ID2D1SolidColorBrush,
+        chip_bg_brush: &ID2D1SolidColorBrush,
     ) {
         let left = bounds.left;
         let top = bounds.top;
-        let right = bounds.right;
-        let _center_x = (left + right) / 2.0;
 
-        // Header on top left
-        let header_rect = D2D_RECT_F {
+        // Section Title: "File Shelf"
+        let title_rect = D2D_RECT_F {
             left: left + 24.0,
             top: top + 10.0,
-            right: left + 150.0,
-            bottom: top + 24.0,
+            right: left + 140.0,
+            bottom: top + 26.0,
         };
-        dwrite.draw_text(&d2d.context, "📁 File Shelf", header_rect, dim_brush, &dwrite.format_small);
+        dwrite.draw_text(&d2d.context, "File Shelf", title_rect, white_brush, &dwrite.format_title);
 
-        // Item count on top right
-        let count_rect = D2D_RECT_F {
-            left: right - 120.0,
-            top: top + 10.0,
-            right: right - 24.0,
-            bottom: top + 24.0,
-        };
         let count_str = format!("{} items", self.items.len());
+        let count_rect = D2D_RECT_F {
+            left: left + 260.0,
+            top: top + 10.0,
+            right: left + 395.0,
+            bottom: top + 26.0,
+        };
         dwrite.draw_text(&d2d.context, &count_str, count_rect, dim_brush, &dwrite.format_small);
 
         if self.items.is_empty() {
             // Drop zone placeholder box
             let drop_box = D2D_RECT_F {
-                left: left + 24.0,
-                top: top + 28.0,
-                right: right - 24.0,
-                bottom: top + 78.0,
+                left: left + 35.0,
+                top: top + 34.0,
+                right: left + 385.0,
+                bottom: top + 92.0,
             };
-            d2d.fill_rounded_rect(drop_box, 6.0, 6.0, card_brush);
+            d2d.fill_rounded_rect(drop_box, 10.0, 10.0, drop_bg_brush);
 
             let msg1_rect = D2D_RECT_F {
                 left: drop_box.left,
-                top: drop_box.top + 10.0,
+                top: drop_box.top + 14.0,
                 right: drop_box.right,
-                bottom: drop_box.top + 26.0,
+                bottom: drop_box.top + 32.0,
             };
             dwrite.draw_text(&d2d.context, "Drop files here", msg1_rect, white_brush, &dwrite.format_center);
 
             let msg2_rect = D2D_RECT_F {
                 left: drop_box.left,
-                top: drop_box.top + 28.0,
+                top: drop_box.top + 34.0,
                 right: drop_box.right,
-                bottom: drop_box.top + 42.0,
+                bottom: drop_box.top + 50.0,
             };
-            dwrite.draw_text(&d2d.context, "Drag out anytime • Click to open", msg2_rect, dim_brush, &dwrite.format_center);
+            dwrite.draw_text(&d2d.context, "Drag out anytime • click to open", msg2_rect, dim_brush, &dwrite.format_center);
         } else {
-            // Render file chips
-            let chip_start_y = top + 28.0;
+            // File chips
+            let chip_start_y = top + 34.0;
             for (idx, item) in self.items.iter().take(2).enumerate() {
-                let cur_y = chip_start_y + (idx as f32 * 26.0);
+                let cur_y = chip_start_y + (idx as f32 * 28.0);
                 let chip_rect = D2D_RECT_F {
-                    left: left + 24.0,
+                    left: left + 40.0,
                     top: cur_y,
-                    right: right - 24.0,
-                    bottom: cur_y + 22.0,
+                    right: left + 380.0,
+                    bottom: cur_y + 24.0,
                 };
-                d2d.fill_rounded_rect(chip_rect, 4.0, 4.0, card_brush);
+                d2d.fill_rounded_rect(chip_rect, 6.0, 6.0, chip_bg_brush);
 
                 let icon_rect = D2D_RECT_F {
                     left: chip_rect.left + 8.0,
-                    top: chip_rect.top + 2.0,
+                    top: chip_rect.top + 3.0,
                     right: chip_rect.left + 24.0,
                     bottom: chip_rect.bottom,
                 };
@@ -153,7 +151,7 @@ impl ShelfSection {
 
                 let name_rect = D2D_RECT_F {
                     left: chip_rect.left + 28.0,
-                    top: chip_rect.top + 2.0,
+                    top: chip_rect.top + 3.0,
                     right: chip_rect.right - 8.0,
                     bottom: chip_rect.bottom,
                 };
@@ -165,13 +163,12 @@ impl ShelfSection {
     pub fn on_click(&self, bounds: D2D_RECT_F, x: f32, y: f32) -> bool {
         let left = bounds.left;
         let top = bounds.top;
-        let right = bounds.right;
 
         if !self.items.is_empty() {
-            let chip_start_y = top + 28.0;
+            let chip_start_y = top + 34.0;
             for (idx, item) in self.items.iter().take(2).enumerate() {
-                let cur_y = chip_start_y + (idx as f32 * 26.0);
-                if y >= cur_y && y <= cur_y + 22.0 && x >= left + 24.0 && x <= right - 24.0 {
+                let cur_y = chip_start_y + (idx as f32 * 28.0);
+                if y >= cur_y && y <= cur_y + 24.0 && x >= left + 40.0 && x <= left + 380.0 {
                     self.open_file(&item.path);
                     return true;
                 }

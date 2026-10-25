@@ -4,7 +4,7 @@ use windows::Win32::Graphics::Direct2D::ID2D1DeviceContext;
 use windows::Win32::Graphics::Direct2D::ID2D1SolidColorBrush;
 use windows::Win32::Graphics::DirectWrite::{
     DWriteCreateFactory, IDWriteFactory, IDWriteTextFormat, DWRITE_FACTORY_TYPE_SHARED,
-    DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT_BOLD,
+    DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL,
     DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
     DWRITE_TEXT_ALIGNMENT_CENTER,
 };
@@ -16,6 +16,7 @@ pub struct DWriteContext {
     pub format_small: IDWriteTextFormat,
     pub format_big: IDWriteTextFormat,
     pub format_center: IDWriteTextFormat,
+    pub format_button: IDWriteTextFormat,
     pub format_nav: IDWriteTextFormat,
 }
 
@@ -37,7 +38,7 @@ impl DWriteContext {
                 DWRITE_FONT_WEIGHT_SEMI_BOLD,
                 DWRITE_FONT_STYLE_NORMAL,
                 DWRITE_FONT_STRETCH_NORMAL,
-                13.0,
+                11.5,
                 locale_name,
             )?
         };
@@ -49,7 +50,7 @@ impl DWriteContext {
                 DWRITE_FONT_WEIGHT_NORMAL,
                 DWRITE_FONT_STYLE_NORMAL,
                 DWRITE_FONT_STRETCH_NORMAL,
-                10.0,
+                9.5,
                 locale_name,
             )?
         };
@@ -70,10 +71,10 @@ impl DWriteContext {
             factory.CreateTextFormat(
                 font_name,
                 None,
-                DWRITE_FONT_WEIGHT_BOLD,
+                DWRITE_FONT_WEIGHT_SEMI_BOLD,
                 DWRITE_FONT_STYLE_NORMAL,
                 DWRITE_FONT_STRETCH_NORMAL,
-                22.0,
+                20.0,
                 locale_name,
             )?
         };
@@ -83,6 +84,21 @@ impl DWriteContext {
                 font_name,
                 None,
                 DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                9.0,
+                locale_name,
+            )?;
+            let _ = fmt.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+            let _ = fmt.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+            fmt
+        };
+
+        let format_button = unsafe {
+            let fmt = factory.CreateTextFormat(
+                font_name,
+                None,
+                DWRITE_FONT_WEIGHT_SEMI_BOLD,
                 DWRITE_FONT_STYLE_NORMAL,
                 DWRITE_FONT_STRETCH_NORMAL,
                 9.5,
@@ -97,10 +113,10 @@ impl DWriteContext {
             let fmt = factory.CreateTextFormat(
                 font_name,
                 None,
-                DWRITE_FONT_WEIGHT_BOLD,
+                DWRITE_FONT_WEIGHT_SEMI_BOLD,
                 DWRITE_FONT_STYLE_NORMAL,
                 DWRITE_FONT_STRETCH_NORMAL,
-                13.0,
+                18.0,
                 locale_name,
             )?;
             let _ = fmt.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -115,6 +131,7 @@ impl DWriteContext {
             format_small,
             format_big,
             format_center,
+            format_button,
             format_nav,
         })
     }

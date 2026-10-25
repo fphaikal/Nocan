@@ -43,11 +43,10 @@ impl TodoSection {
             }
         }
 
-        // Default tasks if empty
         self.items = vec![
             TodoItem {
                 id: 1,
-                title: "Build Nocan Living Notch in Rust".to_string(),
+                title: "Complete Nocan Living Notch in Rust".to_string(),
                 completed: true,
             },
             TodoItem {
@@ -57,7 +56,7 @@ impl TodoSection {
             },
             TodoItem {
                 id: 3,
-                title: "Keep shelf & media controls intact".to_string(),
+                title: "Check Shelf & Media controls".to_string(),
                 completed: false,
             },
         ];
@@ -84,65 +83,61 @@ impl TodoSection {
         bounds: D2D_RECT_F,
         white_brush: &ID2D1SolidColorBrush,
         dim_brush: &ID2D1SolidColorBrush,
-        card_brush: &ID2D1SolidColorBrush,
         accent_brush: &ID2D1SolidColorBrush,
+        check_bg_brush: &ID2D1SolidColorBrush,
     ) {
         let left = bounds.left;
         let top = bounds.top;
-        let right = bounds.right;
 
-        // Header on top left
-        let header_rect = D2D_RECT_F {
+        // Section Title: "TodoList"
+        let title_rect = D2D_RECT_F {
             left: left + 24.0,
             top: top + 10.0,
-            right: left + 150.0,
-            bottom: top + 24.0,
+            right: left + 140.0,
+            bottom: top + 26.0,
         };
-        dwrite.draw_text(&d2d.context, "✅ Daily Tasks", header_rect, dim_brush, &dwrite.format_small);
+        dwrite.draw_text(&d2d.context, "TodoList", title_rect, white_brush, &dwrite.format_title);
 
-        // Completion count on top right
+        // Completion Counter on Right
         let completed_count = self.items.iter().filter(|i| i.completed).count();
-        let count_str = format!("{}/{} done", completed_count, self.items.len());
+        let count_str = format!("Done Today: {}/{}", completed_count, self.items.len());
         let count_rect = D2D_RECT_F {
-            left: right - 120.0,
+            left: left + 250.0,
             top: top + 10.0,
-            right: right - 24.0,
-            bottom: top + 24.0,
+            right: left + 395.0,
+            bottom: top + 26.0,
         };
         dwrite.draw_text(&d2d.context, &count_str, count_rect, dim_brush, &dwrite.format_small);
 
-        // Render up to 3 task rows
-        let row_start_y = top + 26.0;
-        let row_h = 20.0;
+        // Render task rows
+        let row_start_y = top + 34.0;
+        let row_h = 24.0;
 
         for (idx, item) in self.items.iter().take(3).enumerate() {
-            let cur_y = row_start_y + (idx as f32 * (row_h + 3.0));
+            let cur_y = row_start_y + (idx as f32 * (row_h + 4.0));
 
-            // Checkbox box
-            let box_rect = D2D_RECT_F {
-                left: left + 24.0,
-                top: cur_y + 2.0,
-                right: left + 38.0,
-                bottom: cur_y + 16.0,
-            };
-            d2d.fill_rounded_rect(box_rect, 3.0, 3.0, card_brush);
+            // Circular Checkbox
+            let center_x = left + 50.0;
+            let center_y = cur_y + 10.0;
 
             if item.completed {
-                d2d.fill_rounded_rect(box_rect, 3.0, 3.0, accent_brush);
+                d2d.fill_ellipse(center_x, center_y, 8.0, 8.0, accent_brush);
                 let check_rect = D2D_RECT_F {
-                    left: box_rect.left,
-                    top: box_rect.top - 1.0,
-                    right: box_rect.right,
-                    bottom: box_rect.bottom,
+                    left: center_x - 8.0,
+                    top: center_y - 8.0,
+                    right: center_x + 8.0,
+                    bottom: center_y + 8.0,
                 };
                 dwrite.draw_text(&d2d.context, "✓", check_rect, white_brush, &dwrite.format_center);
+            } else {
+                d2d.fill_ellipse(center_x, center_y, 8.0, 8.0, check_bg_brush);
             }
 
             // Task Title
             let text_rect = D2D_RECT_F {
-                left: box_rect.right + 10.0,
+                left: center_x + 14.0,
                 top: cur_y,
-                right: right - 24.0,
+                right: left + 380.0,
                 bottom: cur_y + row_h,
             };
             let brush = if item.completed { dim_brush } else { white_brush };
@@ -153,12 +148,12 @@ impl TodoSection {
     pub fn on_click(&mut self, bounds: D2D_RECT_F, x: f32, y: f32) -> bool {
         let left = bounds.left;
         let top = bounds.top;
-        let row_start_y = top + 26.0;
-        let row_h = 20.0;
+        let row_start_y = top + 34.0;
+        let row_h = 24.0;
 
         for (idx, item) in self.items.iter().take(3).enumerate() {
-            let cur_y = row_start_y + (idx as f32 * (row_h + 3.0));
-            if y >= cur_y && y <= cur_y + row_h && x >= left + 20.0 && x <= left + 45.0 {
+            let cur_y = row_start_y + (idx as f32 * (row_h + 4.0));
+            if y >= cur_y - 2.0 && y <= cur_y + row_h && x >= left + 35.0 && x <= left + 75.0 {
                 let id = item.id;
                 self.toggle_item(id);
                 return true;

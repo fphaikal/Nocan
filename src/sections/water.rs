@@ -35,116 +35,102 @@ impl WaterSection {
         bounds: D2D_RECT_F,
         white_brush: &ID2D1SolidColorBrush,
         dim_brush: &ID2D1SolidColorBrush,
-        card_brush: &ID2D1SolidColorBrush,
         water_brush: &ID2D1SolidColorBrush,
+        btn_dark_brush: &ID2D1SolidColorBrush,
     ) {
         let left = bounds.left;
         let top = bounds.top;
-        let right = bounds.right;
-        let center_x = (left + right) / 2.0;
 
-        // Header on top left
-        let header_rect = D2D_RECT_F {
+        // Section Title: "WaterReminder"
+        let title_rect = D2D_RECT_F {
             left: left + 24.0,
             top: top + 10.0,
-            right: left + 150.0,
-            bottom: top + 24.0,
+            right: left + 160.0,
+            bottom: top + 26.0,
         };
-        dwrite.draw_text(&d2d.context, "💧 Water Intake", header_rect, dim_brush, &dwrite.format_small);
+        dwrite.draw_text(&d2d.context, "WaterReminder", title_rect, white_brush, &dwrite.format_title);
 
-        // Percentage on top right
+        // Circular Water Graphic on Left: center (left + 78, top + 66), radius 32
+        let water_center_x = left + 44.0 + 34.0;
+        let water_center_y = top + 32.0 + 34.0;
+        d2d.fill_ellipse(water_center_x, water_center_y, 32.0, 32.0, water_brush);
+
+        let icon_rect = D2D_RECT_F {
+            left: water_center_x - 16.0,
+            top: water_center_y - 14.0,
+            right: water_center_x + 16.0,
+            bottom: water_center_y + 14.0,
+        };
+        dwrite.draw_text(&d2d.context, "💧", icon_rect, white_brush, &dwrite.format_center);
+
+        // Right side: Intake and buttons
         let percent = ((self.intake_ml as f32 / self.goal_ml as f32) * 100.0) as u32;
-        let pct_rect = D2D_RECT_F {
-            left: right - 120.0,
-            top: top + 10.0,
-            right: right - 24.0,
-            bottom: top + 24.0,
-        };
-        let pct_str = format!("Goal: {}%", percent);
-        dwrite.draw_text(&d2d.context, &pct_str, pct_rect, dim_brush, &dwrite.format_small);
+        let intake_str = format!("{} ml", self.intake_ml);
 
-        // Main Intake Display: "1,250 ml / 2,000 ml"
-        let intake_str = format!("{} / {} ml", self.intake_ml, self.goal_ml);
         let intake_rect = D2D_RECT_F {
-            left: center_x - 120.0,
-            top: top + 24.0,
-            right: center_x + 120.0,
-            bottom: top + 52.0,
+            left: left + 215.0,
+            top: top + 30.0,
+            right: left + 360.0,
+            bottom: top + 56.0,
         };
         dwrite.draw_text(&d2d.context, &intake_str, intake_rect, white_brush, &dwrite.format_big);
 
-        // Progress Bar
-        let bar_left = left + 40.0;
-        let bar_right = right - 40.0;
-        let bar_top = top + 54.0;
-        let bar_h = 4.0;
-
-        let bg_bar_rect = D2D_RECT_F {
-            left: bar_left,
-            top: bar_top,
-            right: bar_right,
-            bottom: bar_top + bar_h,
+        let goal_str = format!("Goal: {}% • Stay hydrated!", percent);
+        let goal_rect = D2D_RECT_F {
+            left: left + 217.0,
+            top: top + 58.0,
+            right: left + 375.0,
+            bottom: top + 74.0,
         };
-        d2d.fill_rounded_rect(bg_bar_rect, 2.0, 2.0, card_brush);
+        dwrite.draw_text(&d2d.context, &goal_str, goal_rect, dim_brush, &dwrite.format_regular);
 
-        let progress = (self.intake_ml as f32 / self.goal_ml as f32).clamp(0.0, 1.0);
-        let fill_w = (bar_right - bar_left) * progress;
-        let fill_bar_rect = D2D_RECT_F {
-            left: bar_left,
-            top: bar_top,
-            right: bar_left + fill_w,
-            bottom: bar_top + bar_h,
-        };
-        d2d.fill_rounded_rect(fill_bar_rect, 2.0, 2.0, water_brush);
+        // Buttons at y=84
+        let btn_y = top + 84.0;
 
-        // Action Buttons
-        let btn_y = top + 66.0;
         let drink_btn_rect = D2D_RECT_F {
-            left: center_x - 65.0,
+            left: left + 215.0,
             top: btn_y,
-            right: center_x + 10.0,
-            bottom: btn_y + 22.0,
+            right: left + 295.0,
+            bottom: btn_y + 26.0,
         };
-        d2d.fill_rounded_rect(drink_btn_rect, 4.0, 4.0, water_brush);
+        d2d.fill_rounded_rect(drink_btn_rect, 13.0, 13.0, water_brush);
 
-        let drink_label_rect = D2D_RECT_F {
+        let drink_text_rect = D2D_RECT_F {
             left: drink_btn_rect.left,
-            top: drink_btn_rect.top + 2.0,
+            top: drink_btn_rect.top + 3.0,
             right: drink_btn_rect.right,
             bottom: drink_btn_rect.bottom,
         };
-        dwrite.draw_text(&d2d.context, "+250 ml Drink", drink_label_rect, white_brush, &dwrite.format_center);
+        dwrite.draw_text(&d2d.context, "+250 ml", drink_text_rect, white_brush, &dwrite.format_button);
 
         let reset_btn_rect = D2D_RECT_F {
-            left: center_x + 18.0,
+            left: left + 302.0,
             top: btn_y,
-            right: center_x + 65.0,
-            bottom: btn_y + 22.0,
+            right: left + 362.0,
+            bottom: btn_y + 26.0,
         };
-        d2d.fill_rounded_rect(reset_btn_rect, 4.0, 4.0, card_brush);
+        d2d.fill_rounded_rect(reset_btn_rect, 13.0, 13.0, btn_dark_brush);
 
-        let reset_label_rect = D2D_RECT_F {
+        let reset_text_rect = D2D_RECT_F {
             left: reset_btn_rect.left,
-            top: reset_btn_rect.top + 2.0,
+            top: reset_btn_rect.top + 3.0,
             right: reset_btn_rect.right,
             bottom: reset_btn_rect.bottom,
         };
-        dwrite.draw_text(&d2d.context, "Reset", reset_label_rect, white_brush, &dwrite.format_center);
+        dwrite.draw_text(&d2d.context, "Reset", reset_text_rect, white_brush, &dwrite.format_button);
     }
 
     pub fn on_click(&mut self, bounds: D2D_RECT_F, x: f32, y: f32) -> bool {
         let left = bounds.left;
         let top = bounds.top;
-        let right = bounds.right;
-        let center_x = (left + right) / 2.0;
+        let btn_y = top + 84.0;
 
-        let btn_y = top + 66.0;
-        if y >= btn_y && y <= btn_y + 22.0 {
-            if x >= center_x - 65.0 && x <= center_x + 10.0 {
+        if y >= btn_y - 2.0 && y <= btn_y + 28.0 {
+            if x >= left + 215.0 && x <= left + 295.0 {
                 self.drink(250);
                 return true;
             }
-            if x >= center_x + 18.0 && x <= center_x + 65.0 {
+            if x >= left + 302.0 && x <= left + 362.0 {
                 self.reset();
                 return true;
             }
