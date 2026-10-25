@@ -106,23 +106,22 @@ impl MusicSection {
 
         // If in lyrics mode, draw bottom ambient blue glow & right lyrics pane
         if self.show_lyrics {
-            if let Ok(amb) = d2d.create_linear_gradient(
-                (left, top + 140.0),
-                (left, top + 25.0),
+            let body_w = bounds.right - bounds.left;
+            let body_h = bounds.bottom - bounds.top;
+            d2d.draw_ambient_glow(
+                left,
+                body_w,
+                body_h,
+                32.0,
+                0.82,
+                0.85,
+                0.0,
                 &[
-                    (0.0, D2D1_COLOR_F { r: 48.0 / 255.0, g: 110.0 / 255.0, b: 196.0 / 255.0, a: 0.55 }),
-                    (0.6, D2D1_COLOR_F { r: 44.0 / 255.0, g: 100.0 / 255.0, b: 184.0 / 255.0, a: 0.16 }),
-                    (1.0, D2D1_COLOR_F { r: 44.0 / 255.0, g: 100.0 / 255.0, b: 184.0 / 255.0, a: 0.0 }),
+                    (0.0, D2D1_COLOR_F { r: 44.0 / 255.0, g: 100.0 / 255.0, b: 184.0 / 255.0, a: 1.0 }),
+                    (0.5, D2D1_COLOR_F { r: 58.0 / 255.0, g: 122.0 / 255.0, b: 208.0 / 255.0, a: 1.0 }),
+                    (1.0, D2D1_COLOR_F { r: 42.0 / 255.0, g: 90.0 / 255.0, b: 168.0 / 255.0, a: 1.0 }),
                 ],
-            ) {
-                let amb_rect = D2D_RECT_F {
-                    left,
-                    top: top + 20.0,
-                    right: bounds.right,
-                    bottom: bounds.bottom,
-                };
-                d2d.fill_rounded_rect_linear(amb_rect, 32.0, 32.0, &amb);
-            }
+            );
         }
 
         // Album Art Box: in normal mode x=44 (so left chevron at x=22 has space), in lyrics mode x=22

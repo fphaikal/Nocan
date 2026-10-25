@@ -69,40 +69,80 @@ impl NavButtons {
         body_left: f32,
         body_w: f32,
         body_h: f32,
-        show_prev: bool,
-        show_next: bool,
-        circle_bg: &ID2D1SolidColorBrush,
-        circle_hover_bg: &ID2D1SolidColorBrush,
-        stroke_brush: &ID2D1SolidColorBrush,
+        prev_alpha: f32,
+        next_alpha: f32,
+        _circle_bg: &ID2D1SolidColorBrush,
+        _circle_hover_bg: &ID2D1SolidColorBrush,
+        _stroke_brush: &ID2D1SolidColorBrush,
     ) {
         let scale = 0.9f32; // 9px / 10px viewBox
 
-        if show_prev {
+        let pa = prev_alpha.clamp(0.0, 1.0);
+        if pa > 0.01 {
             let (cx, cy) = Self::prev_center(body_left, body_w, body_h);
-            let bg = if self.hovered_prev { circle_hover_bg } else { circle_bg };
-            d2d.fill_ellipse(cx, cy, 11.0, 11.0, bg);
+            let bg_alpha = (if self.hovered_prev { 0.42 } else { 0.28 }) * pa;
+            if let (Ok(bg), Ok(stroke)) = (
+                d2d.create_solid_brush(
+                    windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: bg_alpha,
+                    },
+                ),
+                d2d.create_solid_brush(
+                    windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: pa,
+                    },
+                ),
+            ) {
+                d2d.fill_ellipse(cx, cy, 11.0, 11.0, &bg);
 
-            // viewBox 0 0 10 10: M6.5 1.5 L3 5 L6.5 8.5
-            let pts = [
-                (cx + (6.5 - 5.0) * scale, cy + (1.5 - 5.0) * scale),
-                (cx + (3.0 - 5.0) * scale, cy + (5.0 - 5.0) * scale),
-                (cx + (6.5 - 5.0) * scale, cy + (8.5 - 5.0) * scale),
-            ];
-            d2d.draw_polyline(&pts, stroke_brush, 2.1, false);
+                // viewBox 0 0 10 10: M6.5 1.5 L3 5 L6.5 8.5
+                let pts = [
+                    (cx + (6.5 - 5.0) * scale, cy + (1.5 - 5.0) * scale),
+                    (cx + (3.0 - 5.0) * scale, cy + (5.0 - 5.0) * scale),
+                    (cx + (6.5 - 5.0) * scale, cy + (8.5 - 5.0) * scale),
+                ];
+                d2d.draw_polyline(&pts, &stroke, 2.1, false);
+            }
         }
 
-        if show_next {
+        let na = next_alpha.clamp(0.0, 1.0);
+        if na > 0.01 {
             let (cx, cy) = Self::next_center(body_left, body_w, body_h);
-            let bg = if self.hovered_next { circle_hover_bg } else { circle_bg };
-            d2d.fill_ellipse(cx, cy, 11.0, 11.0, bg);
+            let bg_alpha = (if self.hovered_next { 0.42 } else { 0.28 }) * na;
+            if let (Ok(bg), Ok(stroke)) = (
+                d2d.create_solid_brush(
+                    windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: bg_alpha,
+                    },
+                ),
+                d2d.create_solid_brush(
+                    windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: na,
+                    },
+                ),
+            ) {
+                d2d.fill_ellipse(cx, cy, 11.0, 11.0, &bg);
 
-            // viewBox 0 0 10 10: M3.5 1.5 L7 5 L3.5 8.5
-            let pts = [
-                (cx + (3.5 - 5.0) * scale, cy + (1.5 - 5.0) * scale),
-                (cx + (7.0 - 5.0) * scale, cy + (5.0 - 5.0) * scale),
-                (cx + (3.5 - 5.0) * scale, cy + (8.5 - 5.0) * scale),
-            ];
-            d2d.draw_polyline(&pts, stroke_brush, 2.1, false);
+                // viewBox 0 0 10 10: M3.5 1.5 L7 5 L3.5 8.5
+                let pts = [
+                    (cx + (3.5 - 5.0) * scale, cy + (1.5 - 5.0) * scale),
+                    (cx + (7.0 - 5.0) * scale, cy + (5.0 - 5.0) * scale),
+                    (cx + (3.5 - 5.0) * scale, cy + (8.5 - 5.0) * scale),
+                ];
+                d2d.draw_polyline(&pts, &stroke, 2.1, false);
+            }
         }
     }
 }

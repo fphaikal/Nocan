@@ -31,6 +31,7 @@ use crate::graphics::dwrite::DWriteContext;
 use crate::integrations::media::MediaService;
 use crate::integrations::system_info::{get_system_status, SystemStatus};
 use crate::notch::carousel::Carousel;
+use crate::notch::dots::TOTAL_SECTIONS;
 use crate::sections::focus::FocusSection;
 use crate::sections::music::MusicSection;
 use crate::sections::openmaus::OpenMausSection;
@@ -80,12 +81,17 @@ pub struct NotchWindow {
     current_h: f32,
     current_r: f32,
     current_ear: f32,
+    vel_w: f32,
+    vel_h: f32,
+    vel_r: f32,
+    vel_ear: f32,
     screen_w: i32,
     screen_x: i32,
     screen_y: i32,
     system_status: SystemStatus,
     last_status_poll: u64,
     start_instant: Instant,
+    last_frame_instant: Instant,
     dump_next_frame: Option<String>,
 }
 
@@ -191,12 +197,17 @@ impl NotchWindow {
             current_h: COLLAPSED_H,
             current_r: COLLAPSED_R,
             current_ear: COLLAPSED_EAR,
+            vel_w: 0.0,
+            vel_h: 0.0,
+            vel_r: 0.0,
+            vel_ear: 0.0,
             screen_w,
             screen_x,
             screen_y,
             system_status: get_system_status(),
             last_status_poll: 0,
             start_instant: Instant::now(),
+            last_frame_instant: Instant::now(),
             dump_next_frame: None,
         });
 
@@ -240,16 +251,23 @@ impl NotchWindow {
         self.current_r = EXPANDED_R;
         self.current_ear = EXPANDED_EAR;
         for sec in 0..6 {
-            self.carousel.set_section(sec);
+            self.carousel.snap_to_section(sec);
             self.music_sec.show_lyrics = false;
             self.resize_and_dump(&format!("{}\\dump_sec_{}.raw", dir, sec));
         }
 
         // 4. Expanded Lyrics Mode
-        self.carousel.set_section(0);
+        self.carousel.snap_to_section(0);
         self.music_sec.show_lyrics = true;
         self.current_body_w = LYRICS_W;
         self.resize_and_dump(&format!("{}\\dump_lyrics.raw", dir));
+
+        // 5. Mid-transition preview between Section 0 (Music) and Section 1 (Focus)
+        self.music_sec.show_lyrics = false;
+        self.current_body_w = EXPANDED_W;
+        self.carousel.current_section = 1;
+        self.carousel.page_pos = 0.45;
+        self.resize_and_dump(&format!("{}\\dump_transition_0_1.raw", dir));
     }
 
     fn resize_and_dump(&mut self, path: &str) {
@@ -265,6 +283,17 @@ impl NotchWindow {
     }
 
     pub fn tick_frame(&mut self) {
+        let now = Instant::now();
+        let dt = now.duration_since(self.last_frame_instant).as_secs_f32().clamp(0.001, 0.050);
+        self.last_frame_instant = now;
+
+        let prev_sec = self.carousel.current_section;
+        self.carousel.update(dt);
+        if self.carousel.current_section == 2 && prev_sec != 2 {
+            self.water_sec.trigger_grow_anim();
+        }
+        self.water_sec.update(dt);
+
         let (target_body_w, target_h, target_r, target_ear) = if self.is_hovered {
             let w = if self.carousel.current_section == 0 && self.music_sec.show_lyrics {
                 LYRICS_W
@@ -281,22 +310,40 @@ impl NotchWindow {
         let old_win_w = (self.current_body_w + 2.0 * self.current_ear).round() as i32;
         let old_win_h = self.current_h.round() as i32;
 
-        self.current_body_w += (target_body_w - self.current_body_w) * 0.24;
-        self.current_h += (target_h - self.current_h) * 0.24;
-        self.current_r += (target_r - self.current_r) * 0.24;
-        self.current_ear += (target_ear - self.current_ear) * 0.24;
+        // Second-order spring physics from nocan.original.exe (0x1400242cd): stiffness = 220.0, damping = 26.0
+        let k = 220.0f32;
+        let d = 26.0f32;
 
-        if (self.current_body_w - target_body_w).abs() < 0.5 {
+        let fw = k * (target_body_w - self.current_body_w) - d * self.vel_w;
+        self.vel_w += fw * dt;
+        self.current_body_w += self.vel_w * dt;
+        if (self.current_body_w - target_body_w).abs() < 0.25 && self.vel_w.abs() < 1.0 {
             self.current_body_w = target_body_w;
+            self.vel_w = 0.0;
         }
-        if (self.current_h - target_h).abs() < 0.5 {
+
+        let fh = k * (target_h - self.current_h) - d * self.vel_h;
+        self.vel_h += fh * dt;
+        self.current_h += self.vel_h * dt;
+        if (self.current_h - target_h).abs() < 0.25 && self.vel_h.abs() < 1.0 {
             self.current_h = target_h;
+            self.vel_h = 0.0;
         }
-        if (self.current_r - target_r).abs() < 0.3 {
+
+        let fr = k * (target_r - self.current_r) - d * self.vel_r;
+        self.vel_r += fr * dt;
+        self.current_r += self.vel_r * dt;
+        if (self.current_r - target_r).abs() < 0.15 && self.vel_r.abs() < 0.5 {
             self.current_r = target_r;
+            self.vel_r = 0.0;
         }
-        if (self.current_ear - target_ear).abs() < 0.3 {
+
+        let fe = k * (target_ear - self.current_ear) - d * self.vel_ear;
+        self.vel_ear += fe * dt;
+        self.current_ear += self.vel_ear * dt;
+        if (self.current_ear - target_ear).abs() < 0.15 && self.vel_ear.abs() < 0.5 {
             self.current_ear = target_ear;
+            self.vel_ear = 0.0;
         }
 
         let new_win_w = (self.current_body_w + 2.0 * self.current_ear).round() as i32;
@@ -409,112 +456,170 @@ impl NotchWindow {
 
             let track = self.media_service.get_info();
 
-            if !self.is_hovered {
-                if !self.minimal_notch && body_h >= 24.0 {
-                    if self.mascot_enabled && !track.is_playing {
-                        self.draw_mascot_bar(body_left, body_w, body_h, anim_time, white_b);
-                    } else {
-                        self.draw_collapsed_bar(body_left, body_w, body_h, &track, anim_time, white_b);
-                    }
-                }
-            } else if body_h >= 90.0 {
-                let sec_bounds = D2D_RECT_F {
-                    left: body_left,
-                    top: 0.0,
-                    right: body_left + body_w,
-                    bottom: body_h,
-                };
+            let open_t = ((body_h - COLLAPSED_H) / (EXPANDED_H - COLLAPSED_H)).clamp(0.0, 1.0);
+            let closed_alpha = (1.0 - open_t * 2.8).clamp(0.0, 1.0);
+            let open_alpha = ((open_t - 0.28) / 0.72).clamp(0.0, 1.0);
 
+            if closed_alpha > 0.01 && !self.minimal_notch && body_h >= 20.0 {
+                let pushed = if closed_alpha < 0.99 {
+                    self.d2d.push_clipped_opacity_layer(body_left, body_w, body_h, corner_r, ear, closed_alpha)
+                } else {
+                    false
+                };
+                if self.mascot_enabled {
+                    self.draw_mascot_bar(body_left, body_w, body_h, corner_r, anim_time, white_b);
+                } else {
+                    self.draw_collapsed_bar(body_left, body_w, body_h, &track, anim_time, white_b);
+                }
+                if pushed {
+                    self.d2d.pop_layer();
+                }
+            }
+
+            if open_alpha > 0.01 {
                 let in_lyrics_mode = self.carousel.current_section == 0 && self.music_sec.show_lyrics;
 
                 // 2. Top Status Header (l-hdr): Battery Ring + Date & Time + 5-Bar Equalizer
                 if !in_lyrics_mode {
+                    let pushed_hdr = if open_alpha < 0.99 {
+                        self.d2d.push_clipped_opacity_layer(body_left, body_w, body_h, corner_r, ear, open_alpha)
+                    } else {
+                        false
+                    };
                     self.draw_expanded_top_bar(body_left, body_w, &track, anim_time, white_b);
+                    if pushed_hdr {
+                        self.d2d.pop_layer();
+                    }
                 }
 
-                // 3. Active Section Content
-                match self.carousel.current_section {
-                    0 => {
-                        self.music_sec.update_lyrics(&track);
-                        self.music_sec.draw(
-                            &self.d2d,
-                            &self.dwrite,
-                            sec_bounds,
-                            &track,
-                            white_b,
-                            dim_b,
-                            bar_b,
-                        );
+                // 3. Spring-Animated Section Transitions (slide_x = delta * 90.0 + smoothstep crossfade)
+                for sec_idx in 0..TOTAL_SECTIONS {
+                    let delta = (sec_idx as f32) - self.carousel.page_pos;
+                    let raw_a = (1.0 - delta.abs()).clamp(0.0, 1.0);
+                    if raw_a <= 0.005 {
+                        continue;
                     }
-                    1 => {
-                        self.focus_sec.draw(
-                            &self.d2d,
-                            &self.dwrite,
-                            sec_bounds,
-                            white_b,
-                            dim_b,
-                            pill_b,
-                        );
+                    let sec_alpha = raw_a * raw_a * (3.0 - 2.0 * raw_a) * open_alpha;
+                    if sec_alpha <= 0.01 {
+                        continue;
                     }
-                    2 => {
-                        self.water_sec.draw(
-                            &self.d2d,
-                            &self.dwrite,
-                            sec_bounds,
-                            white_b,
-                            dim_b,
-                            pill_b,
-                        );
+                    let slide_x = delta * 90.0;
+                    let sec_bounds = D2D_RECT_F {
+                        left: body_left + slide_x,
+                        top: 0.0,
+                        right: body_left + body_w + slide_x,
+                        bottom: body_h,
+                    };
+
+                    let pushed_sec = if sec_alpha < 0.995 || slide_x.abs() > 0.5 {
+                        self.d2d.push_clipped_opacity_layer(body_left, body_w, body_h, corner_r, ear, sec_alpha)
+                    } else {
+                        false
+                    };
+
+                    match sec_idx {
+                        0 => {
+                            self.music_sec.update_lyrics(&track);
+                            self.music_sec.draw(
+                                &self.d2d,
+                                &self.dwrite,
+                                sec_bounds,
+                                &track,
+                                white_b,
+                                dim_b,
+                                bar_b,
+                            );
+                        }
+                        1 => {
+                            self.focus_sec.draw(
+                                &self.d2d,
+                                &self.dwrite,
+                                sec_bounds,
+                                white_b,
+                                dim_b,
+                                pill_b,
+                            );
+                        }
+                        2 => {
+                            self.water_sec.draw(
+                                &self.d2d,
+                                &self.dwrite,
+                                sec_bounds,
+                                white_b,
+                                dim_b,
+                                pill_b,
+                            );
+                        }
+                        3 => {
+                            self.shelf_sec.draw(
+                                &self.d2d,
+                                &self.dwrite,
+                                sec_bounds,
+                                white_b,
+                                dim_b,
+                                pill_b,
+                            );
+                        }
+                        4 => {
+                            self.todo_sec.draw(
+                                &self.d2d,
+                                &self.dwrite,
+                                sec_bounds,
+                                white_b,
+                                dim_b,
+                                pill_b,
+                            );
+                        }
+                        5 => {
+                            self.openmaus_sec.draw(
+                                &self.d2d,
+                                &self.dwrite,
+                                sec_bounds,
+                                white_b,
+                                dim_b,
+                                pill_b,
+                            );
+                        }
+                        _ => {}
                     }
-                    3 => {
-                        self.shelf_sec.draw(
-                            &self.d2d,
-                            &self.dwrite,
-                            sec_bounds,
-                            white_b,
-                            dim_b,
-                            pill_b,
-                        );
+
+                    if pushed_sec {
+                        self.d2d.pop_layer();
                     }
-                    4 => {
-                        self.todo_sec.draw(
-                            &self.d2d,
-                            &self.dwrite,
-                            sec_bounds,
-                            white_b,
-                            dim_b,
-                            pill_b,
-                        );
-                    }
-                    5 => {
-                        self.openmaus_sec.draw(
-                            &self.d2d,
-                            &self.dwrite,
-                            sec_bounds,
-                            white_b,
-                            dim_b,
-                            pill_b,
-                        );
-                    }
-                    _ => {}
                 }
 
                 // 4. Circular Navigation Arrows (.arw) & Page Dots (.dots)
                 if !in_lyrics_mode {
+                    let prev_a = self.carousel.prev_alpha() * open_alpha;
+                    let next_a = self.carousel.next_alpha() * open_alpha;
                     self.carousel.nav.draw(
                         &self.d2d,
                         body_left,
                         body_w,
                         body_h,
-                        true,
-                        true,
+                        prev_a,
+                        next_a,
                         nav_bg,
                         nav_hov,
                         white_b,
                     );
-                    self.carousel
-                        .dots
-                        .draw(&self.d2d, body_left, body_w, body_h, white_b, dot_inactive);
+                    let pushed_dots = if open_alpha < 0.99 {
+                        self.d2d.push_clipped_opacity_layer(body_left, body_w, body_h, corner_r, ear, open_alpha)
+                    } else {
+                        false
+                    };
+                    self.carousel.dots.draw(
+                        &self.d2d,
+                        body_left,
+                        body_w,
+                        body_h,
+                        self.carousel.page_pos,
+                        white_b,
+                        dot_inactive,
+                    );
+                    if pushed_dots {
+                        self.d2d.pop_layer();
+                    }
                 }
             }
         }
@@ -599,54 +704,92 @@ impl NotchWindow {
         body_left: f32,
         body_w: f32,
         body_h: f32,
+        corner_r: f32,
         anim_time: f32,
         white_brush: &ID2D1SolidColorBrush,
     ) {
         let cx = body_left + body_w * 0.5;
         let cy = body_h * 0.5;
 
-        // Ambient bottom glow (.ambient: cyan -> indigo -> violet)
-        if let Ok(amb) = self.d2d.create_linear_gradient(
-            (body_left, body_h),
-            (body_left + body_w, body_h),
-            &[
-                (0.0, D2D1_COLOR_F { r: 25.0 / 255.0, g: 184.0 / 255.0, b: 1.0, a: 0.45 }),
-                (0.55, D2D1_COLOR_F { r: 45.0 / 255.0, g: 91.0 / 255.0, b: 1.0, a: 0.45 }),
-                (1.0, D2D1_COLOR_F { r: 123.0 / 255.0, g: 75.0 / 255.0, b: 1.0, a: 0.45 }),
-            ],
-        ) {
-            let r = D2D_RECT_F {
-                left: body_left + 6.0,
-                top: body_h * 0.45,
-                right: body_left + body_w - 6.0,
-                bottom: body_h,
-            };
-            self.d2d.fill_rounded_rect_linear(r, 12.0, 12.0, &amb);
-        }
+        // Exact nocan.original.exe (0x140038f38, 0x140039002, 0x140039b99, 0x140039c49) ambient glow:
+        // Horizontal gradient (#1ab8ff -> #2970ff -> #754dff) masked vertically by 6-stop alpha gradient
+        // from bottom (y = body_h) up to y = body_h * 0.10, clipped to the notch body rounded silhouette.
+        let breathe_opacity = if self.dump_next_frame.is_some() {
+            0.85
+        } else {
+            0.75 + 0.12 * (anim_time * 1.6).sin()
+        };
+        let shift_x = if self.dump_next_frame.is_some() {
+            0.0
+        } else {
+            (anim_time * 0.60).sin() * (body_w * 0.12)
+        };
 
-        // Periodic blink every 4.2s (92%..100% scaleY drops to 0.1)
-        let phase = (anim_time % 4.2) / 4.2;
-        let blink_scale: f32 = if phase > 0.92 && phase < 0.98 {
-            0.12
+        self.d2d.draw_ambient_glow(
+            body_left,
+            body_w,
+            body_h,
+            corner_r,
+            0.90,
+            breathe_opacity,
+            shift_x,
+            &[
+                (0.00, D2D1_COLOR_F { r: 0.10, g: 0.74, b: 1.00, a: 1.0 }),
+                (0.50, D2D1_COLOR_F { r: 0.16, g: 0.44, b: 1.00, a: 1.0 }),
+                (1.00, D2D1_COLOR_F { r: 0.46, g: 0.30, b: 1.00, a: 1.0 }),
+            ],
+        );
+
+        // Subtle cursor eye-tracking (clamped to [-3.0, 3.0] horizontally, [-2.0, 2.0] vertically)
+        let (look_x, look_y) = if self.dump_next_frame.is_some() {
+            (0.0f32, 0.0f32)
+        } else {
+            let mut pt = POINT::default();
+            unsafe {
+                let _ = GetCursorPos(&mut pt);
+            }
+            let notch_screen_cx = (self.screen_x + self.screen_w / 2) as f32;
+            let notch_screen_cy = (self.screen_y as f32) + cy;
+            let dx = ((pt.x as f32 - notch_screen_cx) / 220.0).clamp(-1.0, 1.0) * 2.6;
+            let dy = ((pt.y as f32 - notch_screen_cy) / 180.0).clamp(-1.0, 1.0) * 1.4;
+            (dx, dy)
+        };
+
+        // Smooth sine blink every 4.2s (0x140039591: 0.18s blink window)
+        let cycle = anim_time % 4.2;
+        let blink_scale = if self.dump_next_frame.is_none() && cycle > 3.86 && cycle < 4.04 {
+            let t = (cycle - 3.86) / 0.18;
+            (1.0 - 0.90 * (t * std::f32::consts::PI).sin()).max(0.10)
         } else {
             1.0
         };
+
         let rx = 4.2f32;
         let ry = (6.2f32 * blink_scale).max(0.6f32);
+        let glow_rx = rx * 2.4;
+        let glow_ry = ry * 1.9 + 2.0;
 
-        // Soft eye glow
-        if let Ok(eye_glow) = self.d2d.create_solid_brush(D2D1_COLOR_F {
-            r: 120.0 / 255.0,
-            g: 190.0 / 255.0,
-            b: 1.0,
-            a: 0.32,
-        }) {
-            self.d2d.fill_ellipse(cx - 11.7, cy, rx + 3.0, ry + 3.0, &eye_glow);
-            self.d2d.fill_ellipse(cx + 11.7, cy, rx + 3.0, ry + 3.0, &eye_glow);
+        let eye_positions = [
+            (cx - 11.0 + look_x, cy + look_y),
+            (cx + 11.0 + look_x, cy + look_y),
+        ];
+
+        // Radial eye glow (0x1400390ce: 3 stops) + solid white eye oval
+        for &(ex, ey) in &eye_positions {
+            if let Ok(rad_glow) = self.d2d.create_radial_gradient(
+                (ex, ey),
+                glow_rx,
+                glow_ry,
+                &[
+                    (0.00, D2D1_COLOR_F { r: 0.55, g: 0.85, b: 1.00, a: 0.55 }),
+                    (0.60, D2D1_COLOR_F { r: 0.35, g: 0.65, b: 1.00, a: 0.15 }),
+                    (1.00, D2D1_COLOR_F { r: 0.30, g: 0.55, b: 1.00, a: 0.00 }),
+                ],
+            ) {
+                self.d2d.fill_ellipse_radial(ex, ey, glow_rx, glow_ry, &rad_glow);
+            }
+            self.d2d.fill_ellipse(ex, ey, rx, ry, white_brush);
         }
-
-        self.d2d.fill_ellipse(cx - 11.7, cy, rx, ry, white_brush);
-        self.d2d.fill_ellipse(cx + 11.7, cy, rx, ry, white_brush);
     }
 
     fn draw_expanded_top_bar(
@@ -708,8 +851,8 @@ impl NotchWindow {
         let in_lyrics_mode = self.carousel.current_section == 0 && self.music_sec.show_lyrics;
 
         if !in_lyrics_mode {
-            if self.carousel.nav.hit_test_prev(body_left, body_w, body_h, x, y, true)
-                || self.carousel.nav.hit_test_next(body_left, body_w, body_h, x, y, true)
+            if self.carousel.nav.hit_test_prev(body_left, body_w, body_h, x, y, self.carousel.show_prev())
+                || self.carousel.nav.hit_test_next(body_left, body_w, body_h, x, y, self.carousel.show_next())
             {
                 return true;
             }
@@ -811,10 +954,12 @@ unsafe extern "system" fn wnd_proc(
                 let body_left = notch.current_ear;
                 let body_w = notch.current_body_w;
                 let body_h = notch.current_h;
+                let show_prev = notch.carousel.show_prev();
+                let show_next = notch.carousel.show_next();
                 notch.carousel.nav.hovered_prev =
-                    notch.carousel.nav.hit_test_prev(body_left, body_w, body_h, x, y, true);
+                    notch.carousel.nav.hit_test_prev(body_left, body_w, body_h, x, y, show_prev);
                 notch.carousel.nav.hovered_next =
-                    notch.carousel.nav.hit_test_next(body_left, body_w, body_h, x, y, true);
+                    notch.carousel.nav.hit_test_next(body_left, body_w, body_h, x, y, show_next);
                 return LRESULT(0);
             }
             WM_MOUSELEAVE => {
@@ -838,11 +983,13 @@ unsafe extern "system" fn wnd_proc(
                 let in_lyrics_mode = notch.carousel.current_section == 0 && notch.music_sec.show_lyrics;
 
                 if !in_lyrics_mode {
-                    if notch.carousel.nav.hit_test_prev(body_left, body_w, body_h, x, y, true) {
+                    let show_prev = notch.carousel.show_prev();
+                    let show_next = notch.carousel.show_next();
+                    if notch.carousel.nav.hit_test_prev(body_left, body_w, body_h, x, y, show_prev) {
                         notch.carousel.prev();
                         return LRESULT(0);
                     }
-                    if notch.carousel.nav.hit_test_next(body_left, body_w, body_h, x, y, true) {
+                    if notch.carousel.nav.hit_test_next(body_left, body_w, body_h, x, y, show_next) {
                         notch.carousel.next();
                         return LRESULT(0);
                     }

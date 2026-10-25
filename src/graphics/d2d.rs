@@ -12,11 +12,11 @@ use windows::Win32::Graphics::Direct2D::{
     D2D1_BUFFER_PRECISION_8BPC_UNORM, D2D1_CAP_STYLE_FLAT, D2D1_CAP_STYLE_ROUND,
     D2D1_COLOR_INTERPOLATION_MODE_PREMULTIPLIED, D2D1_COLOR_SPACE_SRGB, D2D1_DASH_STYLE_CUSTOM,
     D2D1_DASH_STYLE_SOLID, D2D1_DEVICE_CONTEXT_OPTIONS_NONE, D2D1_ELLIPSE, D2D1_EXTEND_MODE_CLAMP,
-    D2D1_FACTORY_OPTIONS, D2D1_FACTORY_TYPE_SINGLE_THREADED,
-    D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES, D2D1_LINE_JOIN_ROUND,
-    D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES, D2D1_ROUNDED_RECT, D2D1_STROKE_STYLE_PROPERTIES1,
-    D2D1_STROKE_TRANSFORM_TYPE_NORMAL, D2D1_SWEEP_DIRECTION_CLOCKWISE,
-    D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,
+    D2D1_FACTORY_OPTIONS, D2D1_FACTORY_TYPE_SINGLE_THREADED, D2D1_LAYER_OPTIONS1_NONE,
+    D2D1_LAYER_PARAMETERS1, D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES, D2D1_LINE_JOIN_ROUND,
+    D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES, D2D1_ROUNDED_RECT,
+    D2D1_STROKE_STYLE_PROPERTIES1, D2D1_STROKE_TRANSFORM_TYPE_NORMAL,
+    D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,
 };
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
 use windows::Win32::Graphics::Dxgi::{IDXGIDevice, IDXGISurface};
@@ -548,6 +548,130 @@ impl D2DContext {
             unsafe {
                 self.context.FillGeometry(&path, brush, None);
             }
+        }
+    }
+
+    /// Pushes a Direct2D layer clipped to the notch body silhouette with a given opacity.
+    /// Used for smooth spring-animated section crossfades and notch expand/collapse fades.
+    pub fn push_clipped_opacity_layer(
+        &self,
+        body_left: f32,
+        body_w: f32,
+        body_h: f32,
+        corner_r: f32,
+        ear_r: f32,
+        opacity: f32,
+    ) -> bool {
+        if let Ok(geom) = self.create_notch_geometry(body_left, 0.0, body_w, body_h, corner_r, ear_r) {
+            let identity = windows::Foundation::Numerics::Matrix3x2 {
+                M11: 1.0,
+                M12: 0.0,
+                M21: 0.0,
+                M22: 1.0,
+                M31: 0.0,
+                M32: 0.0,
+            };
+            let params = D2D1_LAYER_PARAMETERS1 {
+                contentBounds: D2D_RECT_F {
+                    left: 0.0,
+                    top: 0.0,
+                    right: body_left + body_w + ear_r,
+                    bottom: body_h,
+                },
+                geometricMask: std::mem::ManuallyDrop::new(Some(geom.into())),
+                maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                maskTransform: identity,
+                opacity: opacity.clamp(0.0, 1.0),
+                opacityBrush: std::mem::ManuallyDrop::new(None),
+                layerOptions: D2D1_LAYER_OPTIONS1_NONE,
+            };
+            unsafe {
+                self.context.PushLayer(&params, None);
+            }
+            let _ = std::mem::ManuallyDrop::into_inner(params.geometricMask);
+            return true;
+        }
+        false
+    }
+
+    pub fn pop_layer(&self) {
+        unsafe {
+            self.context.PopLayer();
+        }
+    }
+
+    /// Draws the authentic Nocan `.ambient` bottom-up masked horizontal gradient glow
+    /// (used by both the Nocan Mascot bar and the Lyrics mode ambient background).
+    /// Matches `nocan.original.exe` (`0x140038f0f` & `0x140039002`) and `web_nocan.html`:
+    /// - Horizontal gradient across `[body_left + shift_x .. body_left + body_w + shift_x]`
+    /// - Masked vertically by the 6-stop alpha gradient from `y = body_h` (alpha 1.0)
+    ///   up to `y = body_h * (1.0 - height_ratio)` (alpha 0.0)
+    /// - Clipped to the notch body rounded-bottom silhouette (`corner_r`).
+    pub fn draw_ambient_glow(
+        &self,
+        body_left: f32,
+        body_w: f32,
+        body_h: f32,
+        corner_r: f32,
+        height_ratio: f32,
+        layer_opacity: f32,
+        shift_x: f32,
+        horiz_stops: &[(f32, D2D1_COLOR_F)],
+    ) {
+        let top_y = body_h * (1.0 - height_ratio.clamp(0.1, 1.0));
+        let mask_stops = [
+            (0.00, D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 1.00 }),
+            (0.15, D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 0.80 }),
+            (0.30, D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 0.55 }),
+            (0.50, D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 0.28 }),
+            (0.70, D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 0.10 }),
+            (1.00, D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 0.00 }),
+        ];
+
+        if let (Ok(geom), Ok(mask_brush), Ok(horiz_brush)) = (
+            self.create_notch_geometry(body_left, 0.0, body_w, body_h, corner_r, 0.0),
+            self.create_linear_gradient((0.0, body_h), (0.0, top_y), &mask_stops),
+            self.create_linear_gradient(
+                (body_left + shift_x, 0.0),
+                (body_left + body_w + shift_x, 0.0),
+                horiz_stops,
+            ),
+        ) {
+            let identity = windows::Foundation::Numerics::Matrix3x2 {
+                M11: 1.0,
+                M12: 0.0,
+                M21: 0.0,
+                M22: 1.0,
+                M31: 0.0,
+                M32: 0.0,
+            };
+            let params = D2D1_LAYER_PARAMETERS1 {
+                contentBounds: D2D_RECT_F {
+                    left: body_left,
+                    top: 0.0,
+                    right: body_left + body_w,
+                    bottom: body_h,
+                },
+                geometricMask: std::mem::ManuallyDrop::new(Some(geom.into())),
+                maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                maskTransform: identity,
+                opacity: layer_opacity.clamp(0.0, 1.0),
+                opacityBrush: std::mem::ManuallyDrop::new(Some(mask_brush.into())),
+                layerOptions: D2D1_LAYER_OPTIONS1_NONE,
+            };
+            unsafe {
+                self.context.PushLayer(&params, None);
+                let fill_rect = D2D_RECT_F {
+                    left: body_left,
+                    top: 0.0,
+                    right: body_left + body_w,
+                    bottom: body_h,
+                };
+                self.context.FillRectangle(&fill_rect, &horiz_brush);
+                self.context.PopLayer();
+            }
+            let _ = std::mem::ManuallyDrop::into_inner(params.geometricMask);
+            let _ = std::mem::ManuallyDrop::into_inner(params.opacityBrush);
         }
     }
 

@@ -8,6 +8,7 @@ pub struct WaterSection {
     pub goal_ml: u32,
     pub reminder_on: bool,
     pub hourly_ml: [u32; 8], // 09..16
+    pub anim_progress: f32,
 }
 
 impl WaterSection {
@@ -17,6 +18,17 @@ impl WaterSection {
             goal_ml: 1500,
             reminder_on: true,
             hourly_ml: [300, 200, 200, 150, 150, 200, 200, 200],
+            anim_progress: 1.0,
+        }
+    }
+
+    pub fn trigger_grow_anim(&mut self) {
+        self.anim_progress = 0.0;
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        if self.anim_progress < 1.0 {
+            self.anim_progress = (self.anim_progress + dt * 2.2).min(1.0);
         }
     }
 
@@ -317,7 +329,9 @@ impl WaterSection {
                 d2d.fill_rounded_rect(track_r, 3.5, 3.5, tb);
             }
             if val > 0 {
-                let bh = ((val as f32 / 400.0).clamp(0.0, 1.0) * 48.5).max(4.0);
+                let p = self.anim_progress.clamp(0.0, 1.0);
+                let ease = 1.0 - (1.0 - p).powi(3);
+                let bh = ((val as f32 / 400.0).clamp(0.0, 1.0) * 48.5 * ease).max(2.0);
                 let bar_r = D2D_RECT_F {
                     left: x,
                     top: chart_y + chart_h - 1.5 - bh,
