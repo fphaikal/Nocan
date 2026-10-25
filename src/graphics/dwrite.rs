@@ -9,6 +9,7 @@ use windows::Win32::Graphics::DirectWrite::{
     DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_WEIGHT_SEMI_BOLD,
     DWRITE_MEASURING_MODE_NATURAL, DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
     DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_TEXT_ALIGNMENT_TRAILING,
+    DWRITE_TEXT_METRICS,
     DWRITE_TRIMMING, DWRITE_TRIMMING_GRANULARITY_CHARACTER, DWRITE_WORD_WRAPPING_NO_WRAP,
 };
 
@@ -101,6 +102,19 @@ impl DWriteContext {
             format_nav: make(18.0, DWRITE_FONT_WEIGHT_SEMI_BOLD, 1)?,
             factory,
         })
+    }
+
+    pub fn measure_text_width(&self, text: &str, format: &IDWriteTextFormat) -> f32 {
+        let utf16: Vec<u16> = text.encode_utf16().collect();
+        unsafe {
+            if let Ok(layout) = self.factory.CreateTextLayout(&utf16, format, 4000.0, 100.0) {
+                let mut m = DWRITE_TEXT_METRICS::default();
+                if layout.GetMetrics(&mut m).is_ok() {
+                    return m.widthIncludingTrailingWhitespace.max(m.width);
+                }
+            }
+        }
+        0.0
     }
 
     pub fn draw_text(

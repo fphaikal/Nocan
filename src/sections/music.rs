@@ -259,29 +259,17 @@ impl MusicSection {
             }
 
             let status = self.lyrics_status.lock().map(|s| s.clone()).unwrap_or_default();
+            let pane_right = bounds.right - 18.0;
             if !status.is_empty() && !track.title.is_empty() {
                 let st_rect = D2D_RECT_F {
                     left: left + 264.0,
                     top: top + 54.0,
-                    right: left + 500.0,
+                    right: pane_right,
                     bottom: top + 84.0,
                 };
                 dwrite.draw_text(&d2d.context, &status, st_rect, dim_brush, &dwrite.format_lyric);
             } else if let Ok(lines) = self.lyrics.lock() {
-                // Find active line index
-                let active_idx = if track.title.is_empty() {
-                    ((std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis()
-                        / 2600) as usize)
-                        % lines.len().max(1)
-                } else {
-                    lines
-                        .iter()
-                        .rposition(|l| pos_ms >= l.time_ms)
-                        .unwrap_or(0)
-                };
+                let active_idx = Self::active_index(&lines, track, pos_ms);
 
                 let dim_lyric_b = d2d
                     .create_solid_brush(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 0.30 })
@@ -295,7 +283,7 @@ impl MusicSection {
                     let rect = D2D_RECT_F {
                         left: left + 264.0,
                         top: y0,
-                        right: left + 504.0,
+                        right: pane_right,
                         bottom: y0 + 24.0,
                     };
                     let b = if idx == active_idx { white_brush } else { dim_b };
@@ -303,6 +291,40 @@ impl MusicSection {
                 }
             }
         }
+    }
+
+    fn active_index(lines: &[LyricLine], track: &MediaTrackInfo, pos_ms: u64) -> usize {
+        if track.title.is_empty() {
+            ((std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+                / 2600) as usize)
+                % lines.len().max(1)
+        } else {
+            lines.iter().rposition(|l| pos_ms >= l.time_ms).unwrap_or(0)
+        }
+    }
+
+    /// Width in px needed by the currently active lyric line (or status text), used to size the notch dynamically.
+    pub fn lyrics_pane_width(&self, dwrite: &DWriteContext, track: &MediaTrackInfo) -> f32 {
+        let status = self.lyrics_status.lock().map(|s| s.clone()).unwrap_or_default();
+        if !status.is_empty() && !track.title.is_empty() {
+            return dwrite.measure_text_width(&status, &dwrite.format_lyric);
+        }
+        let pos_ms = if track.title.is_empty() && track.duration_ms == 0 {
+            193_000
+        } else {
+            track.position_ms
+        };
+        if let Ok(lines) = self.lyrics.lock() {
+            if lines.is_empty() {
+                return 0.0;
+            }
+            let idx = Self::active_index(&lines, track, pos_ms);
+            return dwrite.measure_text_width(&lines[idx].text, &dwrite.format_lyric);
+        }
+        0.0
     }
 
     fn draw_album_art(

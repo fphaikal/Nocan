@@ -52,7 +52,7 @@ use crate::sections::water::WaterSection;
 /// Fixed DirectComposition canvas size matching `nocan.original.exe` (`0x140001a54`).
 /// Using a fixed canvas avoids per-frame `IDXGISwapChain1::ResizeBuffers` & `SetWindowPos` calls,
 /// eliminating GPU stalls and integer-rounding horizontal jitter during animations.
-const CANVAS_W: i32 = 580;
+const CANVAS_W: i32 = 760;
 const CANVAS_H: i32 = 160;
 
 const MINIMIZED_W: f32 = 44.0;
@@ -70,7 +70,10 @@ const PEEK_CARD_W: f32 = 310.0;
 const PEEK_CARD_H: f32 = 60.0;
 
 const EXPANDED_W: f32 = 420.0;
-const LYRICS_W: f32 = 520.0;
+const LYRICS_MIN_W: f32 = 440.0;
+const LYRICS_MAX_W: f32 = 700.0;
+const LYRICS_PANE_LEFT: f32 = 264.0;
+const LYRICS_PANE_PAD: f32 = 26.0;
 const EXPANDED_H: f32 = 140.0;
 const EXPANDED_R: f32 = 32.0;
 const EXPANDED_EAR: f32 = 22.0;
@@ -133,6 +136,7 @@ pub struct NotchWindow {
     pub auto_minimized: bool,
     pub autostart_enabled: bool,
     current_body_w: f32,
+    lyrics_w: f32,
     current_h: f32,
     vel_w: f32,
     vel_h: f32,
@@ -287,6 +291,7 @@ impl NotchWindow {
             auto_minimized: false,
             autostart_enabled: true,
             current_body_w: COLLAPSED_W,
+            lyrics_w: LYRICS_MIN_W,
             current_h: COLLAPSED_H,
             vel_w: 0.0,
             vel_h: 0.0,
@@ -484,7 +489,8 @@ impl NotchWindow {
         // 4. Expanded Lyrics Mode
         self.carousel.snap_to_section(0);
         self.music_sec.show_lyrics = true;
-        self.current_body_w = LYRICS_W;
+        self.lyrics_w = 520.0;
+        self.current_body_w = 520.0;
         self.resize_and_dump(&format!("{}\\dump_lyrics.raw", dir));
 
         // 5. Mid-transition preview between Section 0 (Music) and Section 1 (Focus)
@@ -692,6 +698,12 @@ impl NotchWindow {
         // 2. Poll volume, audio device changes, and Bluetooth connections
         self.poll_system_events(now);
 
+        if self.carousel.current_section == 0 && self.music_sec.show_lyrics {
+            let track = self.media_service.get_info();
+            let pane = self.music_sec.lyrics_pane_width(&self.dwrite, &track);
+            self.lyrics_w = (LYRICS_PANE_LEFT + pane + LYRICS_PANE_PAD).clamp(LYRICS_MIN_W, LYRICS_MAX_W);
+        }
+
         // 3. Update active Peek Overlay timer & progress animation
         if let Some(ref mut peek) = self.peek_overlay {
             if now.duration_since(peek.updated_at).as_secs_f32() >= peek.duration_secs {
@@ -749,7 +761,7 @@ impl NotchWindow {
                 }
             } else {
                 let target_w = if self.carousel.current_section == 0 && self.music_sec.show_lyrics {
-                    LYRICS_W
+                    self.lyrics_w
                 } else {
                     EXPANDED_W
                 };
@@ -771,7 +783,7 @@ impl NotchWindow {
 
         let (target_body_w, target_h) = if self.is_hovered {
             let w = if self.carousel.current_section == 0 && self.music_sec.show_lyrics {
-                LYRICS_W
+                self.lyrics_w
             } else {
                 EXPANDED_W
             };
