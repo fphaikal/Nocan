@@ -1,7 +1,7 @@
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 use windows::core::{Result, PCWSTR};
-use windows::Win32::Foundation::{HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Foundation::{HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Direct2D::Common::{D2D1_COLOR_F, D2D_RECT_F};
 use windows::Win32::Graphics::Direct2D::ID2D1SolidColorBrush;
 use windows::Win32::Graphics::Gdi::{
@@ -21,7 +21,7 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
     DispatchMessageW, GetClassNameW, GetCursorPos, GetForegroundWindow, GetMessageW, IsIconic,
-    IsWindowVisible, LoadCursorW, LoadIconW, MessageBoxW, PostQuitMessage, RegisterClassExW,
+    GetWindowRect, IsWindowVisible, IsZoomed, LoadCursorW, LoadIconW, MessageBoxW, PostQuitMessage, RegisterClassExW,
     SetCursor, SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TrackPopupMenu,
     TranslateMessage, DEVICE_NOTIFY_WINDOW_HANDLE, GWLP_USERDATA, HTCLIENT, IDC_ARROW, IDC_HAND,
     IDI_APPLICATION, MB_ICONINFORMATION, MB_OK, MF_CHECKED, MF_SEPARATOR, MF_STRING, MF_UNCHECKED,
@@ -595,6 +595,17 @@ impl NotchWindow {
             }
             if !IsWindowVisible(fg).as_bool() || IsIconic(fg).as_bool() {
                 return Some(false);
+            }
+            // Only minimize for maximized / full-screen windows; restored (non-maximized) windows leave the notch as is.
+            if !IsZoomed(fg).as_bool() {
+                let mut rc = RECT::default();
+                let covers_screen = GetWindowRect(fg, &mut rc).is_ok()
+                    && rc.left <= self.screen_x
+                    && rc.top <= self.screen_y
+                    && rc.right >= self.screen_x + self.screen_w;
+                if !covers_screen {
+                    return Some(false);
+                }
             }
             let mut class_buf = [0u16; 64];
             let len = GetClassNameW(fg, &mut class_buf);
