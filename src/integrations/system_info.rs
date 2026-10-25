@@ -3,6 +3,8 @@ use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 #[derive(Clone, Debug)]
 pub struct SystemStatus {
     pub time_str: String,
+    pub date_str: String,
+    pub clock_str: String,
     pub battery_percent: Option<u8>,
     pub is_charging: bool,
     pub is_battery_present: bool,
@@ -13,6 +15,8 @@ impl Default for SystemStatus {
     fn default() -> Self {
         Self {
             time_str: String::new(),
+            date_str: String::new(),
+            clock_str: String::new(),
             battery_percent: None,
             is_charging: false,
             is_battery_present: false,
@@ -22,7 +26,7 @@ impl Default for SystemStatus {
 }
 
 pub fn get_system_status() -> SystemStatus {
-    let time_str = format_current_time();
+    let (date_str, clock_str, time_str) = format_current_time();
 
     let mut battery_percent = None;
     let mut is_charging = false;
@@ -43,6 +47,8 @@ pub fn get_system_status() -> SystemStatus {
 
     SystemStatus {
         time_str,
+        date_str,
+        clock_str,
         battery_percent,
         is_charging,
         is_battery_present,
@@ -50,8 +56,7 @@ pub fn get_system_status() -> SystemStatus {
     }
 }
 
-fn format_current_time() -> String {
-    // Get local time using Win32 GetLocalTime
+fn format_current_time() -> (String, String, String) {
     unsafe {
         let st = windows::Win32::System::SystemInformation::GetLocalTime();
 
@@ -65,9 +70,9 @@ fn format_current_time() -> String {
             .get(st.wMonth.saturating_sub(1) as usize)
             .unwrap_or(&"");
 
-        format!(
-            "{} {} {} {} {:02}:{:02}",
-            day_name, st.wDay, month_name, st.wYear, st.wHour, st.wMinute
-        )
+        let date_str = format!("{} {} {} {}", day_name, st.wDay, month_name, st.wYear);
+        let clock_str = format!("{:02}:{:02}", st.wHour, st.wMinute);
+        let time_str = format!("{} {}", date_str, clock_str);
+        (date_str, clock_str, time_str)
     }
 }

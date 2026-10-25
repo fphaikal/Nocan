@@ -4,7 +4,7 @@ use crate::notch::nav::NavButtons;
 pub struct Carousel {
     pub current_section: usize,
     pub target_section: usize,
-    pub transition_offset: f32, // -1.0 to 1.0
+    pub transition_offset: f32,
     pub dots: DotsIndicator,
     pub nav: NavButtons,
 }
@@ -18,6 +18,14 @@ impl Carousel {
             dots: DotsIndicator::new(),
             nav: NavButtons::new(),
         }
+    }
+
+    pub fn show_prev(&self) -> bool {
+        self.current_section > 0
+    }
+
+    pub fn show_next(&self) -> bool {
+        self.current_section + 1 < TOTAL_SECTIONS
     }
 
     pub fn next(&mut self) {
@@ -49,24 +57,24 @@ impl Carousel {
         }
     }
 
-    pub fn on_click(&mut self, notch_w: f32, notch_h: f32, x: f32, y: f32) -> bool {
-        if self.nav.hit_test_prev(notch_w, notch_h, x, y) {
+    pub fn on_click(&mut self, body_left: f32, body_w: f32, body_h: f32, x: f32, y: f32) -> bool {
+        if self.nav.hit_test_prev(body_left, body_w, body_h, x, y, self.show_prev()) {
             self.prev();
             return true;
         }
-        if self.nav.hit_test_next(notch_w, notch_h, x, y) {
+        if self.nav.hit_test_next(body_left, body_w, body_h, x, y, self.show_next()) {
             self.next();
             return true;
         }
-        if let Some(idx) = self.dots.hit_test(notch_w, notch_h, x, y) {
+        if let Some(idx) = self.dots.hit_test(body_left, body_w, body_h, x, y) {
             self.set_section(idx);
             return true;
         }
         false
     }
 
-    pub fn on_mouse_move(&mut self, notch_w: f32, notch_h: f32, x: f32, y: f32) {
-        self.nav.hovered_prev = self.nav.hit_test_prev(notch_w, notch_h, x, y);
-        self.nav.hovered_next = self.nav.hit_test_next(notch_w, notch_h, x, y);
+    pub fn on_mouse_move(&mut self, body_left: f32, body_w: f32, body_h: f32, x: f32, y: f32) {
+        self.nav.hovered_prev = self.nav.hit_test_prev(body_left, body_w, body_h, x, y, self.show_prev());
+        self.nav.hovered_next = self.nav.hit_test_next(body_left, body_w, body_h, x, y, self.show_next());
     }
 }

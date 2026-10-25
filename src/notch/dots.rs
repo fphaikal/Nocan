@@ -19,40 +19,51 @@ impl DotsIndicator {
         }
     }
 
-    pub fn hit_test(&self, notch_width: f32, notch_height: f32, x: f32, y: f32) -> Option<usize> {
-        let center_x = notch_width / 2.0;
-        let y_pos = notch_height - 9.0;
+    pub fn hit_test(&self, body_left: f32, body_w: f32, _body_h: f32, x: f32, y: f32) -> Option<usize> {
+        let center_x = body_left + body_w * 0.5;
+        let y_pos = 133.0;
 
-        if y < y_pos - 8.0 || y > y_pos + 8.0 {
+        if y < y_pos - 7.0 || y > y_pos + 7.0 {
             return None;
         }
 
-        let total_w = 76.0;
-        let start_x = center_x - (total_w / 2.0);
-        if x < start_x || x > start_x + total_w {
+        let inactive_w = 3.6;
+        let active_w = 15.0;
+        let gap = 4.5;
+        let total_w = (TOTAL_SECTIONS - 1) as f32 * (inactive_w + gap) + active_w;
+        let start_x = center_x - total_w * 0.5;
+
+        if x < start_x - 4.0 || x > start_x + total_w + 4.0 {
             return None;
         }
 
-        let rel_x = x - start_x;
-        let idx = ((rel_x / total_w) * TOTAL_SECTIONS as f32) as usize;
-        Some(idx.min(TOTAL_SECTIONS - 1))
+        let mut cur_x = start_x;
+        for i in 0..TOTAL_SECTIONS {
+            let w = if i == self.active_index { active_w } else { inactive_w };
+            if x >= cur_x - 2.2 && x <= cur_x + w + 2.2 {
+                return Some(i);
+            }
+            cur_x += w + gap;
+        }
+        None
     }
 
     pub fn draw(
         &self,
         d2d: &D2DContext,
-        notch_width: f32,
-        notch_height: f32,
+        body_left: f32,
+        body_w: f32,
+        _body_h: f32,
         active_brush: &ID2D1SolidColorBrush,
         inactive_brush: &ID2D1SolidColorBrush,
     ) {
-        let center_x = notch_width / 2.0;
-        let y_pos = notch_height - 9.0;
+        let center_x = body_left + body_w * 0.5;
+        let y_pos = 133.0;
 
-        let inactive_w = 4.0;
-        let active_w = 16.0;
-        let dot_h = 4.0;
-        let gap = 6.0;
+        let inactive_w = 3.6;
+        let active_w = 15.0;
+        let dot_h = 3.6;
+        let gap = 4.5;
 
         let total_w = (TOTAL_SECTIONS - 1) as f32 * (inactive_w + gap) + active_w;
         let mut cur_x = center_x - (total_w / 2.0);
@@ -73,7 +84,7 @@ impl DotsIndicator {
                 inactive_brush
             };
 
-            d2d.fill_rounded_rect(rect, 2.0, 2.0, brush);
+            d2d.fill_rounded_rect(rect, 1.8, 1.8, brush);
             cur_x += w + gap;
         }
     }

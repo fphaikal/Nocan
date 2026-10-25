@@ -1,6 +1,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use windows::Graphics::Imaging::{
+    BitmapAlphaMode, BitmapBounds, BitmapDecoder, BitmapInterpolationMode, BitmapPixelFormat,
+    BitmapTransform, ColorManagementMode, ExifOrientationMode,
+};
 use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSessionManager,
     GlobalSystemMediaTransportControlsSessionPlaybackStatus,
@@ -16,6 +20,7 @@ pub struct MediaTrackInfo {
     pub position_ms: u64,
     pub duration_ms: u64,
     pub artwork_url: Option<String>,
+    pub thumbnail_bgra: Option<Arc<Vec<u8>>>, // 62x62 BGRA8 Premultiplied
 }
 
 #[derive(Clone)]
@@ -49,9 +54,12 @@ impl MediaService {
                 );
             }
 
+            let mut cached_key = String::new();
+            let mut cached_thumb: Option<Arc<Vec<u8>>> = None;
+
             let _ = std::fs::write("C:\\Users\\abufa\\AppData\\Local\\Nocan\\nocan_media.log", "Media service thread started\n");
             while running.load(Ordering::SeqCst) {
-                match poll_current_media() {
+                match poll_current_media(&mut cached_key, &mut cached_thumb) {
                     Ok(info) => {
                         if let Ok(mut lock) = current_track.lock() {
                             *lock = info;
@@ -107,7 +115,10 @@ impl MediaService {
     }
 }
 
-fn poll_current_media() -> windows::core::Result<MediaTrackInfo> {
+fn poll_current_media(
+    cached_key: &mut String,
+    cached_thumb: &mut Option<Arc<Vec<u8>>>,
+) -> windows::core::Result<MediaTrackInfo> {
     let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.get()?;
     let session = manager.GetCurrentSession()?;
 
@@ -127,6 +138,15 @@ fn poll_current_media() -> windows::core::Result<MediaTrackInfo> {
         .AlbumTitle()
         .map(|s| s.to_string())
         .unwrap_or_default();
+
+    let key = format!("{}|{}", title, artist);
+    if !title.is_empty() && key != *cached_key {
+        *cached_key = key;
+        *cached_thumb = decode_thumbnail_62x62(&media_props).ok().map(Arc::new);
+    } else if title.is_empty() {
+        cached_key.clear();
+        *cached_thumb = None;
+    }
 
     let mut position_ms = 0;
     let mut duration_ms = 0;
@@ -148,5 +168,52 @@ fn poll_current_media() -> windows::core::Result<MediaTrackInfo> {
         position_ms,
         duration_ms,
         artwork_url: None,
+        thumbnail_bgra: cached_thumb.clone(),
     })
+}
+
+fn decode_thumbnail_62x62(
+    media_props: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties,
+) -> windows::core::Result<Vec<u8>> {
+    let thumb_ref = media_props.Thumbnail()?;
+    let stream = thumb_ref.OpenReadAsync()?.get()?;
+    let decoder = BitmapDecoder::CreateAsync(&stream)?.get()?;
+    let orig_w = decoder.PixelWidth()?;
+    let orig_h = decoder.PixelHeight()?;
+    if orig_w == 0 || orig_h == 0 {
+        return Err(windows::core::Error::from_hresult(windows::core::HRESULT(-1)));
+    }
+
+    let transform = BitmapTransform::new()?;
+    transform.SetInterpolationMode(BitmapInterpolationMode::Fant)?;
+
+    // Scale so the smaller dimension becomes 62, then center-crop 62x62
+    let target = 62u32;
+    let (scaled_w, scaled_h) = if orig_w >= orig_h {
+        let sw = ((orig_w as u64 * target as u64) / orig_h as u64).max(target as u64) as u32;
+        (sw, target)
+    } else {
+        let sh = ((orig_h as u64 * target as u64) / orig_w as u64).max(target as u64) as u32;
+        (target, sh)
+    };
+    transform.SetScaledWidth(scaled_w)?;
+    transform.SetScaledHeight(scaled_h)?;
+    transform.SetBounds(BitmapBounds {
+        X: (scaled_w.saturating_sub(target)) / 2,
+        Y: (scaled_h.saturating_sub(target)) / 2,
+        Width: target,
+        Height: target,
+    })?;
+
+    let provider = decoder
+        .GetPixelDataTransformedAsync(
+            BitmapPixelFormat::Bgra8,
+            BitmapAlphaMode::Premultiplied,
+            &transform,
+            ExifOrientationMode::IgnoreExifOrientation,
+            ColorManagementMode::DoNotColorManage,
+        )?
+        .get()?;
+    let bytes = provider.DetachPixelData()?;
+    Ok(bytes.to_vec())
 }

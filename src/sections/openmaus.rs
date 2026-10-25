@@ -1,4 +1,4 @@
-use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
+use windows::Win32::Graphics::Direct2D::Common::{D2D1_COLOR_F, D2D_RECT_F};
 use windows::Win32::Graphics::Direct2D::ID2D1SolidColorBrush;
 use crate::graphics::d2d::D2DContext;
 use crate::graphics::dwrite::DWriteContext;
@@ -36,119 +36,161 @@ impl OpenMausSection {
         bounds: D2D_RECT_F,
         white_brush: &ID2D1SolidColorBrush,
         dim_brush: &ID2D1SolidColorBrush,
-        bot_circle_brush: &ID2D1SolidColorBrush,
-        green_bg_brush: &ID2D1SolidColorBrush,
-        green_text_brush: &ID2D1SolidColorBrush,
+        pill_bg_brush: &ID2D1SolidColorBrush,
     ) {
         let left = bounds.left;
         let top = bounds.top;
 
-        // Section Title: "⚡ OpenMausBot"
-        let title_rect = D2D_RECT_F {
-            left: left + 24.0,
-            top: top + 10.0,
-            right: left + 180.0,
-            bottom: top + 26.0,
-        };
-        dwrite.draw_text(&d2d.context, "⚡ OpenMausBot", title_rect, white_brush, &dwrite.format_title);
-
-        // Status Badge: "● ACTIVE" on the top right
-        let badge_rect = D2D_RECT_F {
-            left: left + 312.0,
+        // 1. Section Title: "OpenMaus" (#fff) + "Bot" (#7b4bff) at left: 15px, top: 19px (vc)
+        let title_w_rect = D2D_RECT_F {
+            left: left + 15.0,
             top: top + 9.0,
-            right: left + 375.0,
-            bottom: top + 25.0,
+            right: left + 95.0,
+            bottom: top + 29.0,
         };
-        d2d.fill_rounded_rect(badge_rect, 8.0, 8.0, green_bg_brush);
+        dwrite.draw_text(&d2d.context, "OpenMaus", title_w_rect, white_brush, &dwrite.format_title);
 
-        let badge_text_rect = D2D_RECT_F {
-            left: badge_rect.left,
-            top: badge_rect.top + 2.0,
-            right: badge_rect.right,
-            bottom: badge_rect.bottom,
-        };
-        dwrite.draw_text(&d2d.context, "● ACTIVE", badge_text_rect, green_text_brush, &dwrite.format_center);
-
-        // Circular Bot Avatar on Left at x=44, y=32, radius=32
-        let bot_center_x = left + 44.0 + 34.0;
-        let bot_center_y = top + 32.0 + 34.0;
-        d2d.fill_ellipse(bot_center_x, bot_center_y, 32.0, 32.0, bot_circle_brush);
-
-        let icon_rect = D2D_RECT_F {
-            left: bot_center_x - 16.0,
-            top: bot_center_y - 14.0,
-            right: bot_center_x + 16.0,
-            bottom: bot_center_y + 14.0,
-        };
-        dwrite.draw_text(&d2d.context, "🤖", icon_rect, white_brush, &dwrite.format_center);
-
-        // Right side data rows (x=120..380)
-        let text_left = left + 120.0;
-        let text_right = left + 380.0;
-
-        // Row 1: Total Turns & Tokens
-        let row1_str = format!(
-            "{} Reqs • {} Tokens",
-            self.report.total_turns,
-            format_tokens(self.report.total_tokens)
-        );
-        let row1_rect = D2D_RECT_F {
-            left: text_left,
-            top: top + 28.0,
-            right: text_right,
-            bottom: top + 46.0,
-        };
-        dwrite.draw_text(&d2d.context, &row1_str, row1_rect, white_brush, &dwrite.format_title);
-
-        // Row 2: Bots breakdown
-        let mut bots_str = String::from("Bots: ");
-        if self.report.bots.is_empty() {
-            bots_str.push_str("None active");
-        } else {
-            let bot_parts: Vec<String> = self.report.bots.iter().take(3).map(|b| {
-                format!("{} ({})", b.name, format_tokens(b.total_tokens))
-            }).collect();
-            bots_str.push_str(&bot_parts.join(" • "));
+        if let Ok(violet_b) = d2d.create_solid_brush(D2D1_COLOR_F {
+            r: 123.0 / 255.0,
+            g: 75.0 / 255.0,
+            b: 1.0,
+            a: 1.0,
+        }) {
+            let title_v_rect = D2D_RECT_F {
+                left: left + 90.0,
+                top: top + 9.0,
+                right: left + 135.0,
+                bottom: top + 29.0,
+            };
+            dwrite.draw_text(&d2d.context, "Bot", title_v_rect, &violet_b, &dwrite.format_title);
         }
-        let row2_rect = D2D_RECT_F {
-            left: text_left,
-            top: top + 48.0,
-            right: text_right,
+
+        // 2. Left Column: Total Tokens (30px bold) + Turns Subtitle + Active Status Pill
+        let tokens_str = format_tokens(self.report.total_tokens);
+        let tok_rect = D2D_RECT_F {
+            left: left + 44.0,
+            top: top + 30.0,
+            right: left + 195.0,
             bottom: top + 64.0,
         };
-        dwrite.draw_text(&d2d.context, &bots_str, row2_rect, dim_brush, &dwrite.format_regular);
+        dwrite.draw_text(&d2d.context, &tokens_str, tok_rect, white_brush, &dwrite.format_big);
 
-        // Row 3: Models
-        let top_models: Vec<String> = self.report.models.iter().take(2).map(|m| {
-            format!("{} ({})", m.name, format_tokens(m.total_tokens))
-        }).collect();
-        let models_str = if top_models.is_empty() {
+        let sub_str = format!("{} Requests · Tokens", self.report.total_turns);
+        let sub_rect = D2D_RECT_F {
+            left: left + 44.0,
+            top: top + 66.0,
+            right: left + 195.0,
+            bottom: top + 84.0,
+        };
+        dwrite.draw_text(&d2d.context, &sub_str, sub_rect, dim_brush, &dwrite.format_sub);
+
+        // Status Pill at left: 44px, top: 93px, height: 28px
+        let badge_rect = D2D_RECT_F {
+            left: left + 44.0,
+            top: top + 93.0,
+            right: left + 146.0,
+            bottom: top + 121.0,
+        };
+        d2d.fill_rounded_rect(badge_rect, 14.0, 14.0, pill_bg_brush);
+        if let Ok(green_b) = d2d.create_solid_brush(D2D1_COLOR_F {
+            r: 51.0 / 255.0,
+            g: 224.0 / 255.0,
+            b: 122.0 / 255.0,
+            a: 1.0,
+        }) {
+            d2d.fill_ellipse(left + 58.0, top + 107.0, 4.0, 4.0, &green_b);
+        }
+        let badge_txt_rect = D2D_RECT_F {
+            left: left + 68.0,
+            top: top + 93.0,
+            right: left + 142.0,
+            bottom: top + 121.0,
+        };
+        dwrite.draw_text(&d2d.context, "Active Sync", badge_txt_rect, white_brush, &dwrite.format_sub);
+
+        // Vertical Divider at left: 198px
+        if let Ok(div_b) = d2d.create_solid_brush(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 0.12 }) {
+            d2d.fill_rect(
+                D2D_RECT_F {
+                    left: left + 198.0,
+                    top: top + 24.0,
+                    right: left + 199.0,
+                    bottom: top + 122.0,
+                },
+                &div_b,
+            );
+        }
+
+        // 3. Right Column: 3 Info Rows (Bots, Models, Providers) at left: 208px, width: 170px, height: 28px
+        let bots_str = if self.report.bots.is_empty() {
+            "Bots: None".to_string()
+        } else {
+            let parts: Vec<String> = self
+                .report
+                .bots
+                .iter()
+                .take(2)
+                .map(|b| format!("{} ({})", b.name, format_tokens(b.total_tokens)))
+                .collect();
+            parts.join(" · ")
+        };
+
+        let models_str = if self.report.models.is_empty() {
             "Model: Default".to_string()
         } else {
-            format!("🧠 {}", top_models.join(" • "))
+            let parts: Vec<String> = self
+                .report
+                .models
+                .iter()
+                .take(2)
+                .map(|m| m.name.clone())
+                .collect();
+            parts.join(" · ")
         };
-        let row3_rect = D2D_RECT_F {
-            left: text_left,
-            top: top + 66.0,
-            right: text_right,
-            bottom: top + 80.0,
-        };
-        dwrite.draw_text(&d2d.context, &models_str, row3_rect, dim_brush, &dwrite.format_small);
 
-        // Row 4: Providers
-        let top_providers: Vec<String> = self.report.providers.iter().take(2).map(|p| p.name.clone()).collect();
-        let prov_str = if top_providers.is_empty() {
+        let prov_str = if self.report.providers.is_empty() {
             "Provider: Local".to_string()
         } else {
-            format!("🔌 {}", top_providers.join(" • "))
+            let parts: Vec<String> = self
+                .report
+                .providers
+                .iter()
+                .take(2)
+                .map(|p| format!("{} ({})", p.name, p.turns))
+                .collect();
+            parts.join(" · ")
         };
-        let row4_rect = D2D_RECT_F {
-            left: text_left,
-            top: top + 82.0,
-            right: text_right,
-            bottom: top + 96.0,
-        };
-        dwrite.draw_text(&d2d.context, &prov_str, row4_rect, dim_brush, &dwrite.format_small);
+
+        let rows = [&bots_str, &models_str, &prov_str];
+        let row_tops = [top + 34.0, top + 65.0, top + 96.0];
+        let row_colors = [
+            D2D1_COLOR_F { r: 25.0 / 255.0, g: 184.0 / 255.0, b: 1.0, a: 1.0 },
+            D2D1_COLOR_F { r: 123.0 / 255.0, g: 75.0 / 255.0, b: 1.0, a: 1.0 },
+            D2D1_COLOR_F { r: 51.0 / 255.0, g: 224.0 / 255.0, b: 122.0 / 255.0, a: 1.0 },
+        ];
+
+        for i in 0..3 {
+            let ry = row_tops[i];
+            let r_rect = D2D_RECT_F {
+                left: left + 208.0,
+                top: ry,
+                right: left + 378.0,
+                bottom: ry + 28.0,
+            };
+            d2d.fill_rounded_rect(r_rect, 9.0, 9.0, pill_bg_brush);
+
+            if let Ok(dot_b) = d2d.create_solid_brush(row_colors[i]) {
+                d2d.fill_ellipse(left + 220.0, ry + 14.0, 4.0, 4.0, &dot_b);
+            }
+
+            let txt_rect = D2D_RECT_F {
+                left: left + 230.0,
+                top: ry,
+                right: left + 372.0,
+                bottom: ry + 28.0,
+            };
+            dwrite.draw_text(&d2d.context, rows[i], txt_rect, white_brush, &dwrite.format_sub);
+        }
     }
 }
 
