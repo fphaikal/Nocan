@@ -40,12 +40,12 @@ use crate::integrations::system_info::{
     get_system_status, query_audio_state, query_connected_bluetooth_devices,
      SystemStatus, GUID_DEVICE_POWER_POLICY_VIDEO_BRIGHTNESS,
 };
-use crate::notch::carousel::Carousel;
-use crate::notch::dots::TOTAL_SECTIONS;
+use crate::notch::carousel::{Carousel, SectionId};
 use crate::sections::focus::FocusSection;
 use crate::sections::music::MusicSection;
 use crate::sections::ai_usage::AiUsageSection;
 use crate::sections::openmaus::OpenMausSection;
+use crate::sections::saham::SahamSection;
 use crate::sections::shelf::ShelfSection;
 use crate::sections::todo::TodoSection;
 use crate::sections::water::WaterSection;
@@ -136,6 +136,7 @@ pub struct NotchWindow {
     todo_sec: TodoSection,
     openmaus_sec: OpenMausSection,
     ai_usage_sec: AiUsageSection,
+    saham_sec: SahamSection,
     pub is_hovered: bool,
     pub mascot_enabled: bool,
     pub minimal_notch: bool,
@@ -247,16 +248,43 @@ impl NotchWindow {
             let _ = Shell_NotifyIconW(NIM_ADD, &nid);
         }
 
-        let d3d = D3DContext::new(hwnd, CANVAS_W as u32, CANVAS_H as u32)?;
-        let mut d2d = D2DContext::new(&d3d.dxgi_device)?;
+        crate::config::debug_log("NotchWindow::create: window created, initializing D3D/D2D");
+        let d3d = match D3DContext::new(hwnd, CANVAS_W as u32, CANVAS_H as u32) {
+            Ok(d) => d,
+            Err(e) => {
+                crate::config::debug_log(&format!("D3DContext::new error: {:?}", e));
+                return Err(e);
+            }
+        };
+        let mut d2d = match D2DContext::new(&d3d.dxgi_device) {
+            Ok(d) => d,
+            Err(e) => {
+                crate::config::debug_log(&format!("D2DContext::new error: {:?}", e));
+                return Err(e);
+            }
+        };
         {
             let surface = d3d.get_surface()?;
             d2d.set_target_surface(&surface)?;
         }
 
-        let dwrite = DWriteContext::new()?;
-        let comp = CompositionTarget::new(hwnd, &d3d.dxgi_device, &d3d.swapchain)?;
+        crate::config::debug_log("NotchWindow::create: initializing DWrite & CompositionTarget");
+        let dwrite = match DWriteContext::new() {
+            Ok(dw) => dw,
+            Err(e) => {
+                crate::config::debug_log(&format!("DWriteContext::new error: {:?}", e));
+                return Err(e);
+            }
+        };
+        let comp = match CompositionTarget::new(hwnd, &d3d.dxgi_device, &d3d.swapchain) {
+            Ok(c) => c,
+            Err(e) => {
+                crate::config::debug_log(&format!("CompositionTarget::new error: {:?}", e));
+                return Err(e);
+            }
+        };
 
+        crate::config::debug_log("NotchWindow::create: spawning BT watcher");
         // Spawn background Bluetooth connection watcher thread
         let (bt_tx, bt_rx) = mpsc::channel();
         std::thread::spawn(move || {
@@ -274,6 +302,7 @@ impl NotchWindow {
             }
         });
 
+        crate::config::debug_log("NotchWindow::create: querying system status & audio");
         let init_status = get_system_status();
         let init_charging = Some(init_status.is_charging);
         let init_audio = query_audio_state();
@@ -283,6 +312,7 @@ impl NotchWindow {
         let prev_audio_device = init_audio
             .map(|a| (a.device_id, a.device_name, a.active_count));
 
+        crate::config::debug_log("NotchWindow::create: constructing NotchWindow struct");
         let notch = Box::new(Self {
             hwnd,
             d3d,
@@ -298,6 +328,7 @@ impl NotchWindow {
             todo_sec: TodoSection::new(),
             openmaus_sec: OpenMausSection::new(),
             ai_usage_sec: AiUsageSection::new(),
+            saham_sec: SahamSection::new(),
             is_hovered: false,
             mascot_enabled: false,
             minimal_notch: false,
@@ -334,6 +365,7 @@ impl NotchWindow {
             dump_next_frame: None,
         });
 
+        crate::config::debug_log("NotchWindow::create: notch struct constructed, setting USERDATA & applying settings");
         let raw_ptr = Box::into_raw(notch);
         unsafe {
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, raw_ptr as isize);
@@ -344,11 +376,13 @@ impl NotchWindow {
                 let _ = DestroyWindow(hwnd);
                 return Ok(hwnd);
             }
+            crate::config::debug_log("NotchWindow::create: calling update_window_rgn & ShowWindow");
             (*raw_ptr).update_window_rgn();
             let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
             windows::Win32::UI::WindowsAndMessaging::SetTimer(hwnd, 1, 10, None);
         }
 
+        crate::config::debug_log("NotchWindow::create: complete, returning Ok(hwnd)");
         Ok(hwnd)
     }
 
@@ -360,6 +394,7 @@ impl NotchWindow {
         self.focus_sec.work_mins = settings.productivity.focus_work_mins;
         self.focus_sec.break_mins = settings.productivity.focus_break_mins;
         self.water_sec.goal_ml = settings.productivity.water_daily_target_glasses * 250;
+        self.carousel.set_active_sections(settings.sections.active_sections());
 
         match settings.ai.default_provider {
             0 => self.ai_usage_sec.active_tab = crate::integrations::ai_usage::AiTab::Antigravity,
@@ -544,11 +579,11 @@ impl NotchWindow {
         self.resize_and_dump(&format!("{}\\dump_mascot.raw", dir));
         self.mascot_enabled = false;
 
-        // 3. Expanded Sections 0..TOTAL_SECTIONS
+        // 3. Expanded Sections
         self.is_hovered = true;
         self.current_body_w = EXPANDED_W;
         self.current_h = EXPANDED_H;
-        for sec in 0..TOTAL_SECTIONS {
+        for sec in 0..self.carousel.total_sections() {
             self.carousel.snap_to_section(sec);
             self.music_sec.show_lyrics = false;
             self.resize_and_dump(&format!("{}\\dump_sec_{}.raw", dir, sec));
@@ -806,7 +841,7 @@ impl NotchWindow {
             }
         }
 
-        if self.carousel.current_section == 0 && self.music_sec.show_lyrics {
+        if self.carousel.current_section_id() == SectionId::Music && self.music_sec.show_lyrics {
             let track = self.media_service.get_info();
             let pane = self.music_sec.lyrics_pane_width(&self.dwrite, &track);
             self.lyrics_w = (LYRICS_PANE_LEFT + pane + LYRICS_PANE_PAD).clamp(LYRICS_MIN_W, LYRICS_MAX_W);
@@ -868,7 +903,7 @@ impl NotchWindow {
                     self.is_hovered = true;
                 }
             } else {
-                let target_w = if self.carousel.current_section == 0 && self.music_sec.show_lyrics {
+                let target_w = if self.carousel.current_section_id() == SectionId::Music && self.music_sec.show_lyrics {
                     self.lyrics_w
                 } else {
                     EXPANDED_W
@@ -881,15 +916,16 @@ impl NotchWindow {
             }
         }
 
-        let prev_sec = self.carousel.current_section;
+        let prev_sec_id = self.carousel.current_section_id();
         self.carousel.update(dt);
-        if self.carousel.current_section == 2 && prev_sec != 2 {
+        if self.carousel.current_section_id() == SectionId::Water && prev_sec_id != SectionId::Water {
             self.water_sec.trigger_grow_anim();
         }
         self.water_sec.update(dt);
+        self.saham_sec.update(dt);
 
         let (target_body_w, target_h) = if self.is_hovered {
-            let w = if self.carousel.current_section == 0 && self.music_sec.show_lyrics {
+            let w = if self.carousel.current_section_id() == SectionId::Music && self.music_sec.show_lyrics {
                 self.lyrics_w
             } else {
                 EXPANDED_W
@@ -1166,7 +1202,7 @@ impl NotchWindow {
 
             if open_alpha > 0.01 {
                 let in_lyrics_mode =
-                    self.carousel.current_section == 0 && self.music_sec.show_lyrics;
+                    self.carousel.current_section_id() == SectionId::Music && self.music_sec.show_lyrics;
 
                 // 2. Top Status Header (l-hdr): Battery Ring + Date & Time + 5-Bar Equalizer
                 if !in_lyrics_mode {
@@ -1189,7 +1225,8 @@ impl NotchWindow {
                 }
 
                 // 3. Spring-Animated Section Transitions (slide_x = delta * 90.0 + smoothstep crossfade)
-                for sec_idx in 0..TOTAL_SECTIONS {
+                let active_secs = self.carousel.active_sections.clone();
+                for (sec_idx, &sec_id) in active_secs.iter().enumerate() {
                     let delta = (sec_idx as f32) - self.carousel.page_pos;
                     let raw_a = (1.0 - delta.abs()).clamp(0.0, 1.0);
                     if raw_a <= 0.005 {
@@ -1220,8 +1257,8 @@ impl NotchWindow {
                         false
                     };
 
-                    match sec_idx {
-                        0 => {
+                    match sec_id {
+                        SectionId::Music => {
                             self.music_sec.update_lyrics(&track);
                             self.music_sec.draw(
                                 &self.d2d,
@@ -1234,7 +1271,7 @@ impl NotchWindow {
                                 self.lyric_color,
                             );
                         }
-                        1 => {
+                        SectionId::Focus => {
                             self.focus_sec.draw(
                                 &self.d2d,
                                 &self.dwrite,
@@ -1244,7 +1281,7 @@ impl NotchWindow {
                                 pill_b,
                             );
                         }
-                        2 => {
+                        SectionId::Water => {
                             self.water_sec.draw(
                                 &self.d2d,
                                 &self.dwrite,
@@ -1254,7 +1291,7 @@ impl NotchWindow {
                                 pill_b,
                             );
                         }
-                        3 => {
+                        SectionId::Shelf => {
                             self.shelf_sec.draw(
                                 &self.d2d,
                                 &self.dwrite,
@@ -1264,7 +1301,7 @@ impl NotchWindow {
                                 pill_b,
                             );
                         }
-                        4 => {
+                        SectionId::Todo => {
                             self.todo_sec.draw(
                                 &self.d2d,
                                 &self.dwrite,
@@ -1274,7 +1311,7 @@ impl NotchWindow {
                                 pill_b,
                             );
                         }
-                        5 => {
+                        SectionId::OpenMaus => {
                             self.openmaus_sec.draw(
                                 &self.d2d,
                                 &self.dwrite,
@@ -1284,7 +1321,7 @@ impl NotchWindow {
                                 pill_b,
                             );
                         }
-                        6 => {
+                        SectionId::AiUsage => {
                             self.ai_usage_sec.draw(
                                 &self.d2d,
                                 &self.dwrite,
@@ -1294,7 +1331,16 @@ impl NotchWindow {
                                 pill_b,
                             );
                         }
-                        _ => {}
+                        SectionId::Saham => {
+                            self.saham_sec.draw(
+                                &self.d2d,
+                                &self.dwrite,
+                                sec_bounds,
+                                white_b,
+                                dim_b,
+                                pill_b,
+                            );
+                        }
                     }
 
                     if pushed_sec {
@@ -2005,7 +2051,7 @@ impl NotchWindow {
         let body_left = self.current_body_left();
         let body_w = self.current_body_w;
         let body_h = self.current_h;
-        let in_lyrics_mode = self.carousel.current_section == 0 && self.music_sec.show_lyrics;
+        let in_lyrics_mode = self.carousel.current_section_id() == SectionId::Music && self.music_sec.show_lyrics;
 
         if !in_lyrics_mode {
             if self
@@ -2036,13 +2082,15 @@ impl NotchWindow {
             bottom: body_h,
         };
 
-        match self.carousel.current_section {
-            0 => self.music_sec.is_interactive(sec_bounds, x, y),
-            1 => self.focus_sec.is_interactive(sec_bounds, x, y),
-            2 => self.water_sec.is_interactive(sec_bounds, x, y),
-            3 => self.shelf_sec.is_interactive(sec_bounds, x, y),
-            4 => self.todo_sec.is_interactive(sec_bounds, x, y),
-            _ => false,
+        match self.carousel.current_section_id() {
+            SectionId::Music => self.music_sec.is_interactive(sec_bounds, x, y),
+            SectionId::Focus => self.focus_sec.is_interactive(sec_bounds, x, y),
+            SectionId::Water => self.water_sec.is_interactive(sec_bounds, x, y),
+            SectionId::Shelf => self.shelf_sec.is_interactive(sec_bounds, x, y),
+            SectionId::Todo => self.todo_sec.is_interactive(sec_bounds, x, y),
+            SectionId::OpenMaus => false,
+            SectionId::AiUsage => true,
+            SectionId::Saham => self.saham_sec.is_interactive(sec_bounds, x, y),
         }
     }
 }
@@ -2175,7 +2223,7 @@ unsafe extern "system" fn wnd_proc(
                 let body_w = notch.current_body_w;
                 let body_h = notch.current_h;
                 let in_lyrics_mode =
-                    notch.carousel.current_section == 0 && notch.music_sec.show_lyrics;
+                    notch.carousel.current_section_id() == SectionId::Music && notch.music_sec.show_lyrics;
 
                 if !in_lyrics_mode {
                     let show_prev = notch.carousel.show_prev();
@@ -2213,8 +2261,8 @@ unsafe extern "system" fn wnd_proc(
                     bottom: body_h,
                 };
 
-                match notch.carousel.current_section {
-                    0 => {
+                match notch.carousel.current_section_id() {
+                    SectionId::Music => {
                         let _ = notch.music_sec.hit_test_controls(
                             sec_bounds,
                             x,
@@ -2222,23 +2270,25 @@ unsafe extern "system" fn wnd_proc(
                             &notch.media_service,
                         );
                     }
-                    1 => {
+                    SectionId::Focus => {
                         let _ = notch.focus_sec.on_click(sec_bounds, x, y);
                     }
-                    2 => {
+                    SectionId::Water => {
                         let _ = notch.water_sec.on_click(sec_bounds, x, y);
                     }
-                    3 => {
+                    SectionId::Shelf => {
                         let _ = notch.shelf_sec.on_click(sec_bounds, x, y);
                     }
-                    4 => {
+                    SectionId::Todo => {
                         let _ = notch.todo_sec.on_click(sec_bounds, x, y);
                     }
-                    5 => {}
-                    6 => {
+                    SectionId::OpenMaus => {}
+                    SectionId::AiUsage => {
                         let _ = notch.ai_usage_sec.on_click(sec_bounds, x, y);
                     }
-                    _ => {}
+                    SectionId::Saham => {
+                        let _ = notch.saham_sec.on_click(sec_bounds, x, y);
+                    }
                 }
                 return LRESULT(0);
             }
@@ -2252,7 +2302,7 @@ unsafe extern "system" fn wnd_proc(
                         let path_str = String::from_utf16_lossy(&buf[..len as usize]);
                         let path = std::path::PathBuf::from(path_str);
                         notch.shelf_sec.add_file(&path);
-                        notch.carousel.set_section(3); // Switch to Shelf (index 3)
+                        notch.carousel.snap_to_section_id(SectionId::Shelf);
                     }
                 }
                 DragFinish(hdrop);

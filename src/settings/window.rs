@@ -34,8 +34,8 @@ pub const WM_SETTINGS_CHANGED: u32 = WM_USER + 102;
 const WM_MOUSELEAVE: u32 = 0x02A3;
 static SETTINGS_HWND: AtomicIsize = AtomicIsize::new(0);
 
-const CLIENT_W: f32 = 760.0;
-const CLIENT_H: f32 = 540.0;
+const CLIENT_W: f32 = 780.0;
+const CLIENT_H: f32 = 560.0;
 
 pub struct SettingsWindow {
     pub hwnd: HWND,
@@ -218,6 +218,30 @@ impl SettingsWindow {
             SettingsAction::ToggleAutoMinimizeOnMaximize => {
                 self.settings.general.auto_minimize_on_maximize =
                     !self.settings.general.auto_minimize_on_maximize;
+            }
+            SettingsAction::ToggleSectionMusic => {
+                self.settings.sections.show_music = !self.settings.sections.show_music;
+            }
+            SettingsAction::ToggleSectionFocus => {
+                self.settings.sections.show_focus = !self.settings.sections.show_focus;
+            }
+            SettingsAction::ToggleSectionWater => {
+                self.settings.sections.show_water = !self.settings.sections.show_water;
+            }
+            SettingsAction::ToggleSectionShelf => {
+                self.settings.sections.show_shelf = !self.settings.sections.show_shelf;
+            }
+            SettingsAction::ToggleSectionTodo => {
+                self.settings.sections.show_todo = !self.settings.sections.show_todo;
+            }
+            SettingsAction::ToggleSectionOpenMaus => {
+                self.settings.sections.show_openmaus = !self.settings.sections.show_openmaus;
+            }
+            SettingsAction::ToggleSectionAiUsage => {
+                self.settings.sections.show_ai_usage = !self.settings.sections.show_ai_usage;
+            }
+            SettingsAction::ToggleSectionSaham => {
+                self.settings.sections.show_saham = !self.settings.sections.show_saham;
             }
             SettingsAction::ToggleAiAntigravity => {
                 self.settings.ai.show_antigravity = !self.settings.ai.show_antigravity;

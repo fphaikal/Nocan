@@ -21,6 +21,52 @@ impl Default for GeneralSettings {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SectionSettings {
+    pub show_music: bool,
+    pub show_focus: bool,
+    pub show_water: bool,
+    pub show_shelf: bool,
+    pub show_todo: bool,
+    pub show_openmaus: bool,
+    pub show_ai_usage: bool,
+    pub show_saham: bool,
+}
+
+impl Default for SectionSettings {
+    fn default() -> Self {
+        Self {
+            show_music: true,
+            show_focus: true,
+            show_water: true,
+            show_shelf: true,
+            show_todo: true,
+            show_openmaus: true,
+            show_ai_usage: true,
+            show_saham: true,
+        }
+    }
+}
+
+impl SectionSettings {
+    pub fn active_sections(&self) -> Vec<crate::notch::carousel::SectionId> {
+        use crate::notch::carousel::SectionId;
+        let mut list = Vec::new();
+        if self.show_music { list.push(SectionId::Music); }
+        if self.show_focus { list.push(SectionId::Focus); }
+        if self.show_water { list.push(SectionId::Water); }
+        if self.show_shelf { list.push(SectionId::Shelf); }
+        if self.show_todo { list.push(SectionId::Todo); }
+        if self.show_openmaus { list.push(SectionId::OpenMaus); }
+        if self.show_ai_usage { list.push(SectionId::AiUsage); }
+        if self.show_saham { list.push(SectionId::Saham); }
+        if list.is_empty() {
+            list.push(SectionId::Music);
+        }
+        list
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AiUsageSettings {
     pub show_antigravity: bool,
     pub show_claude: bool,
@@ -103,6 +149,8 @@ impl Default for AppearanceSettings {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct AppSettings {
     pub general: GeneralSettings,
+    #[serde(default)]
+    pub sections: SectionSettings,
     pub ai: AiUsageSettings,
     pub music: MusicSettings,
     pub productivity: ProductivitySettings,

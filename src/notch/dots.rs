@@ -2,24 +2,39 @@ use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 use windows::Win32::Graphics::Direct2D::ID2D1SolidColorBrush;
 use crate::graphics::d2d::D2DContext;
 
-pub const TOTAL_SECTIONS: usize = 7;
+pub const DEFAULT_TOTAL_SECTIONS: usize = 8;
 
 pub struct DotsIndicator {
     pub active_index: usize,
+    pub total_sections: usize,
 }
 
 impl DotsIndicator {
     pub fn new() -> Self {
-        Self { active_index: 0 }
+        Self {
+            active_index: 0,
+            total_sections: DEFAULT_TOTAL_SECTIONS,
+        }
+    }
+
+    pub fn set_total_sections(&mut self, total: usize) {
+        self.total_sections = total;
+        if self.active_index >= total && total > 0 {
+            self.active_index = total - 1;
+        }
     }
 
     pub fn set_index(&mut self, index: usize) {
-        if index < TOTAL_SECTIONS {
+        if index < self.total_sections {
             self.active_index = index;
         }
     }
 
     pub fn hit_test(&self, body_left: f32, body_w: f32, _body_h: f32, x: f32, y: f32) -> Option<usize> {
+        if self.total_sections <= 1 {
+            return None;
+        }
+
         let center_x = body_left + body_w * 0.5;
         let y_pos = 133.0;
 
@@ -30,7 +45,7 @@ impl DotsIndicator {
         let inactive_w = 3.6;
         let active_w = 15.0;
         let gap = 4.5;
-        let total_w = (TOTAL_SECTIONS - 1) as f32 * (inactive_w + gap) + active_w;
+        let total_w = (self.total_sections - 1) as f32 * (inactive_w + gap) + active_w;
         let start_x = center_x - total_w * 0.5;
 
         if x < start_x - 4.0 || x > start_x + total_w + 4.0 {
@@ -38,7 +53,7 @@ impl DotsIndicator {
         }
 
         let mut cur_x = start_x;
-        for i in 0..TOTAL_SECTIONS {
+        for i in 0..self.total_sections {
             let w = if i == self.active_index { active_w } else { inactive_w };
             if x >= cur_x - 2.2 && x <= cur_x + w + 2.2 {
                 return Some(i);
@@ -58,6 +73,10 @@ impl DotsIndicator {
         _active_brush: &ID2D1SolidColorBrush,
         _inactive_brush: &ID2D1SolidColorBrush,
     ) {
+        if self.total_sections <= 1 {
+            return;
+        }
+
         let center_x = body_left + body_w * 0.5;
         let y_pos = 133.0;
 
@@ -66,11 +85,11 @@ impl DotsIndicator {
         let dot_h = 3.6f32;
         let gap = 4.5f32;
 
-        let mut widths = [inactive_w; TOTAL_SECTIONS];
-        let mut alphas = [0.45f32; TOTAL_SECTIONS];
-        let mut total_w = (TOTAL_SECTIONS - 1) as f32 * gap;
+        let mut widths = vec![inactive_w; self.total_sections];
+        let mut alphas = vec![0.45f32; self.total_sections];
+        let mut total_w = (self.total_sections - 1) as f32 * gap;
 
-        for i in 0..TOTAL_SECTIONS {
+        for i in 0..self.total_sections {
             let t = (1.0 - ((i as f32) - page_pos).abs()).clamp(0.0, 1.0);
             let smooth_t = t * t * (3.0 - 2.0 * t);
             widths[i] = inactive_w + (active_w - inactive_w) * smooth_t;
@@ -80,7 +99,7 @@ impl DotsIndicator {
 
         let mut cur_x = center_x - (total_w * 0.5);
 
-        for i in 0..TOTAL_SECTIONS {
+        for i in 0..self.total_sections {
             let w = widths[i];
             let rect = D2D_RECT_F {
                 left: cur_x,
@@ -99,6 +118,7 @@ impl DotsIndicator {
             ) {
                 d2d.fill_rounded_rect(rect, 1.8, 1.8, &dot_b);
             }
+
             cur_x += w + gap;
         }
     }

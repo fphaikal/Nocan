@@ -30,6 +30,14 @@ pub enum SettingsAction {
     ToggleMascot,
     ToggleMinimalNotch,
     ToggleAutoMinimizeOnMaximize,
+    ToggleSectionMusic,
+    ToggleSectionFocus,
+    ToggleSectionWater,
+    ToggleSectionShelf,
+    ToggleSectionTodo,
+    ToggleSectionOpenMaus,
+    ToggleSectionAiUsage,
+    ToggleSectionSaham,
     ToggleAiAntigravity,
     ToggleAiClaude,
     ToggleAiCodex,
@@ -279,6 +287,7 @@ impl SettingsRenderer {
             // Tabs in Sidebar
             let tab_labels = [
                 ("Umum", "⚙️"),
+                ("Seksi Notch", "🎛️"),
                 ("AI Monitor", "🤖"),
                 ("Musik & Lirik", "🎵"),
                 ("Produktivitas", "⏱️"),
@@ -393,10 +402,11 @@ impl SettingsRenderer {
 
             let (header_title, header_desc) = match active_tab {
                 0 => ("Pengaturan Umum", "Konfigurasi dasar perilaku startup dan interaksi notch."),
-                1 => ("AI Usage Monitor", "Pantau kuota penggunaan model AI favorit Anda secara langsung di notch."),
-                2 => ("Musik & Lirik", "Pendaran warna dinamis, lirik real-time, dan status Rich Presence Discord."),
-                3 => ("Produktivitas", "Pengatur waktu fokus kerja Pomodoro dan pengingat hidrasi tubuh."),
-                4 => ("Tampilan & Desain", "Sesuaikan warna aksen dan transparansi visual acrylic."),
+                1 => ("Kustomisasi Seksi Notch", "Aktifkan atau nonaktifkan bagian notch sesuai kebutuhan alur kerja Anda."),
+                2 => ("AI Usage Monitor", "Pantau kuota penggunaan model AI favorit Anda secara langsung di notch."),
+                3 => ("Musik & Lirik", "Pendaran warna dinamis, lirik real-time, dan status Rich Presence Discord."),
+                4 => ("Produktivitas", "Pengatur waktu fokus kerja Pomodoro dan pengingat hidrasi tubuh."),
+                5 => ("Tampilan & Desain", "Sesuaikan warna aksen dan transparansi visual acrylic."),
                 _ => ("Tentang Nocan", "Informasi aplikasi, sumber daya pihak ketiga, dan reset konfigurasi."),
             };
 
@@ -493,7 +503,89 @@ impl SettingsRenderer {
                     }
                 }
                 1 => {
-                    // TAB 1: AI MONITOR
+                    // TAB 1: SEKSI NOTCH (SECTION TOGGLES)
+                    let sec_card_h = 44.0f32;
+                    let sec_card_gap = 6.0f32;
+                    let sec_rows = [
+                        (
+                            "🎵  Seksi Musik & Lirik",
+                            "Pemutar media, kontrol lagu, dan lirik tersinkronisasi.",
+                            settings.sections.show_music,
+                            SettingsAction::ToggleSectionMusic,
+                        ),
+                        (
+                            "⏱️  Seksi Fokus Pomodoro",
+                            "Timer fokus kerja 25 menit dan interval istirahat produktif.",
+                            settings.sections.show_focus,
+                            SettingsAction::ToggleSectionFocus,
+                        ),
+                        (
+                            "💧  Seksi Pengingat Air",
+                            "Pelacak target hidrasi harian dan pencatatan asupan air.",
+                            settings.sections.show_water,
+                            SettingsAction::ToggleSectionWater,
+                        ),
+                        (
+                            "📁  Seksi File Shelf",
+                            "Wadah penyimpanan cepat drag-and-drop berkas sementara.",
+                            settings.sections.show_shelf,
+                            SettingsAction::ToggleSectionShelf,
+                        ),
+                        (
+                            "📝  Seksi To-Do List",
+                            "Daftar checklist tugas harian interaktif di notch.",
+                            settings.sections.show_todo,
+                            SettingsAction::ToggleSectionTodo,
+                        ),
+                        (
+                            "🤖  Seksi OpenMaus AI Bot",
+                            "Asisten AI percakapan cepat dan pintasan prompt cerdas.",
+                            settings.sections.show_openmaus,
+                            SettingsAction::ToggleSectionOpenMaus,
+                        ),
+                        (
+                            "📊  Seksi AI Usage Monitor",
+                            "Pantau kuota token Antigravity, Claude, Codex, dan OpenCode.",
+                            settings.sections.show_ai_usage,
+                            SettingsAction::ToggleSectionAiUsage,
+                        ),
+                        (
+                            "📈  Seksi Saham & Bursa",
+                            "Pantau harga saham IHSG (BBCA, BBRI, TLKM) dan global (NVDA, AAPL, BTC).",
+                            settings.sections.show_saham,
+                            SettingsAction::ToggleSectionSaham,
+                        ),
+                    ];
+
+                    for (title, desc, active, action) in sec_rows {
+                        let card_rect = D2D_RECT_F {
+                            left: content_x,
+                            top: cur_y,
+                            right: content_x + content_w,
+                            bottom: cur_y + sec_card_h,
+                        };
+
+                        Self::render_toggle_card(
+                            target,
+                            brush,
+                            dwrite,
+                            &card_rect,
+                            title,
+                            desc,
+                            active,
+                            mouse_pos,
+                        );
+
+                        regions.push(ClickRegion {
+                            rect: card_rect,
+                            action,
+                        });
+
+                        cur_y += sec_card_h + sec_card_gap;
+                    }
+                }
+                2 => {
+                    // TAB 2: AI MONITOR
                     let provider_rows = [
                         (
                             "Google Antigravity",
@@ -574,8 +666,8 @@ impl SettingsRenderer {
                         &mut regions,
                     );
                 }
-                2 => {
-                    // TAB 2: MUSIC & LYRICS
+                3 => {
+                    // TAB 3: MUSIC & LYRICS
                     let music_rows = [
                         (
                             "Dynamic Ambience Glow",
@@ -624,8 +716,8 @@ impl SettingsRenderer {
                         cur_y += card_h + card_spacing;
                     }
                 }
-                3 => {
-                    // TAB 3: PRODUCTIVITY (POMODORO & WATER)
+                4 => {
+                    // TAB 4: PRODUCTIVITY (POMODORO & WATER)
                     let p_cards = [
                         (
                             "Durasi Kerja Pomodoro",
@@ -681,8 +773,8 @@ impl SettingsRenderer {
                         cur_y += card_h + card_spacing;
                     }
                 }
-                4 => {
-                    // TAB 4: APPEARANCE
+                5 => {
+                    // TAB 5: APPEARANCE
                     let colors = [
                         ("Auto", D2D1_COLOR_F { r: 0.35, g: 0.35, b: 0.40, a: 1.0 }),
                         ("Gemini", D2D1_COLOR_F { r: 0.23, g: 0.51, b: 0.96, a: 1.0 }),
