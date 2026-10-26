@@ -17,6 +17,8 @@ pub struct FocusSection {
     pub remaining_secs: u32,
     pub total_secs: u32,
     pub sessions_completed: u32,
+    pub work_mins: u32,
+    pub break_mins: u32,
     last_tick: Option<Instant>,
 }
 
@@ -28,6 +30,8 @@ impl FocusSection {
             remaining_secs: 25 * 60,
             total_secs: 25 * 60,
             sessions_completed: 0,
+            work_mins: 25,
+            break_mins: 5,
             last_tick: None,
         }
     }
@@ -91,8 +95,8 @@ impl FocusSection {
         self.is_running = false;
         self.last_tick = None;
         self.total_secs = match mode {
-            PomodoroMode::Focus => 25 * 60,
-            PomodoroMode::ShortBreak => 5 * 60,
+            PomodoroMode::Focus => self.work_mins * 60,
+            PomodoroMode::ShortBreak => self.break_mins * 60,
             PomodoroMode::LongBreak => 15 * 60,
         };
         self.remaining_secs = self.total_secs;

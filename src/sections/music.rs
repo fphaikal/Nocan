@@ -14,6 +14,7 @@ pub struct LyricLine {
 
 pub struct MusicSection {
     pub show_lyrics: bool,
+    pub ambient_glow_enabled: bool,
     last_fetched_key: String,
     fetch_in_progress: Arc<AtomicBool>,
     fetch_failed: Arc<AtomicBool>,
@@ -35,6 +36,7 @@ impl MusicSection {
         ];
         Self {
             show_lyrics: false,
+            ambient_glow_enabled: true,
             last_fetched_key: String::new(),
             fetch_in_progress: Arc::new(AtomicBool::new(false)),
             fetch_failed: Arc::new(AtomicBool::new(false)),
@@ -133,7 +135,7 @@ impl MusicSection {
         let top = bounds.top;
 
         // If in lyrics mode, draw bottom ambient glow from album cover & right lyrics pane
-        if self.show_lyrics {
+        if self.show_lyrics && self.ambient_glow_enabled {
             let body_w = bounds.right - bounds.left;
             let body_h = bounds.bottom - bounds.top;
             let (cr, cg, cb) = ambient_color;

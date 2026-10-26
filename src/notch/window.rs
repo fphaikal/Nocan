@@ -26,7 +26,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     TranslateMessage, DEVICE_NOTIFY_WINDOW_HANDLE, GWLP_USERDATA, HTCLIENT, IDC_ARROW, IDC_HAND,
     IDI_APPLICATION, MB_ICONINFORMATION, MB_OK, MF_CHECKED, MF_SEPARATOR, MF_STRING, MF_UNCHECKED,
     MSG, PBT_POWERSETTINGCHANGE, SW_SHOWNOACTIVATE, TPM_BOTTOMALIGN, TPM_RETURNCMD,
-    TPM_RIGHTBUTTON, WM_DESTROY, WM_DROPFILES, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+    TPM_RIGHTBUTTON, WM_COMMAND, WM_DESTROY, WM_DROPFILES, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_MOUSEWHEEL,
     WM_POWERBROADCAST, WM_RBUTTONUP, WM_SETCURSOR, WM_TIMER, WM_USER, WNDCLASSEXW,
     WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
@@ -83,6 +83,7 @@ const EXPANDED_R: f32 = 32.0;
 const EXPANDED_EAR: f32 = 22.0;
 
 const WM_TRAYICON: u32 = WM_USER + 101;
+const IDM_SETTINGS: usize = 1000;
 const IDM_AUTOSTART: usize = 1001;
 const IDM_MASCOT: usize = 1002;
 const IDM_MINIMAL: usize = 1003;
@@ -336,6 +337,8 @@ impl NotchWindow {
         let raw_ptr = Box::into_raw(notch);
         unsafe {
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, raw_ptr as isize);
+            let settings = crate::config::AppSettings::load();
+            (*raw_ptr).apply_settings(&settings);
             if std::env::args().any(|a| a == "--dump-previews") {
                 (*raw_ptr).dump_all_previews();
                 let _ = DestroyWindow(hwnd);
@@ -347,6 +350,24 @@ impl NotchWindow {
         }
 
         Ok(hwnd)
+    }
+
+    pub fn apply_settings(&mut self, settings: &crate::config::AppSettings) {
+        self.autostart_enabled = settings.general.autostart;
+        self.mascot_enabled = settings.general.mascot_enabled;
+        self.minimal_notch = settings.general.minimal_notch;
+        self.music_sec.ambient_glow_enabled = settings.music.ambient_glow_enabled;
+        self.focus_sec.work_mins = settings.productivity.focus_work_mins;
+        self.focus_sec.break_mins = settings.productivity.focus_break_mins;
+        self.water_sec.goal_ml = settings.productivity.water_daily_target_glasses * 250;
+
+        match settings.ai.default_provider {
+            0 => self.ai_usage_sec.active_tab = crate::integrations::ai_usage::AiTab::Antigravity,
+            1 => self.ai_usage_sec.active_tab = crate::integrations::ai_usage::AiTab::Claude,
+            2 => self.ai_usage_sec.active_tab = crate::integrations::ai_usage::AiTab::Codex,
+            3 => self.ai_usage_sec.active_tab = crate::integrations::ai_usage::AiTab::OpenCode,
+            _ => {}
+        }
     }
 
     /// Computes `(corner_r, ear_r)` directly from `(body_w, body_h)` matching `nocan.original.exe` (`0x14002fd5a`).
@@ -2033,6 +2054,7 @@ pub fn run_message_loop() {
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
+        crate::config::debug_log(&format!("run_message_loop loop finished with msg: 0x{:X}, wParam: {}", msg.message, msg.wParam.0));
     }
 }
 
@@ -2236,11 +2258,19 @@ unsafe extern "system" fn wnd_proc(
                 DragFinish(hdrop);
                 return LRESULT(0);
             }
+            WM_COMMAND => {
+                let id = (wparam.0 & 0xFFFF) as usize;
+                if id == IDM_SETTINGS {
+                    let _ = crate::settings::SettingsWindow::show_or_create(hwnd);
+                    return LRESULT(0);
+                }
+            }
             WM_TRAYICON => {
                 if lparam.0 as u32 == WM_RBUTTONUP {
                     let mut pt = POINT::default();
                     let _ = GetCursorPos(&mut pt);
                     if let Ok(hmenu) = CreatePopupMenu() {
+                        let settings_w: Vec<u16> = "Settings...\0".encode_utf16().collect();
                         let auto_w: Vec<u16> = "Start with Windows\0".encode_utf16().collect();
                         let mascot_w: Vec<u16> = "Nocan Mascot\0".encode_utf16().collect();
                         let min_w: Vec<u16> = "Minimal notch\0".encode_utf16().collect();
@@ -2263,6 +2293,13 @@ unsafe extern "system" fn wnd_proc(
                             MF_UNCHECKED
                         };
 
+                        let _ = AppendMenuW(
+                            hmenu,
+                            MF_STRING,
+                            IDM_SETTINGS,
+                            PCWSTR(settings_w.as_ptr()),
+                        );
+                        let _ = AppendMenuW(hmenu, MF_SEPARATOR, 0, PCWSTR::null());
                         let _ = AppendMenuW(
                             hmenu,
                             MF_STRING | auto_flag,
@@ -2297,6 +2334,9 @@ unsafe extern "system" fn wnd_proc(
                         );
                         let _ = DestroyMenu(hmenu);
                         match cmd.0 as usize {
+                            IDM_SETTINGS => {
+                                let _ = crate::settings::SettingsWindow::show_or_create(hwnd);
+                            }
                             IDM_AUTOSTART => {
                                 notch.autostart_enabled = !notch.autostart_enabled;
                             }
@@ -2325,7 +2365,13 @@ unsafe extern "system" fn wnd_proc(
                 }
                 return LRESULT(0);
             }
+            crate::settings::window::WM_SETTINGS_CHANGED => {
+                let settings = crate::config::AppSettings::load();
+                notch.apply_settings(&settings);
+                return LRESULT(0);
+            }
             WM_DESTROY => {
+                crate::config::debug_log("NotchWindow WM_DESTROY triggered!");
                 let nid = NOTIFYICONDATAW {
                     cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
                     hWnd: hwnd,
