@@ -39,14 +39,12 @@ fn main() -> Result<()> {
         let _handle = CreateMutexW(None, true, PCWSTR(mutex_name.as_ptr()))?;
         let last_err = windows::Win32::Foundation::GetLastError();
         if last_err == ERROR_ALREADY_EXISTS {
-            log("Exiting: ERROR_ALREADY_EXISTS");
-            if std::env::args().any(|a| a == "--settings") {
-                let event_name: Vec<u16> = "NocanNotch.OpenSettingsEvent\0".encode_utf16().collect();
-                if let Ok(ev) = OpenEventW(EVENT_MODIFY_STATE, false, PCWSTR(event_name.as_ptr())) {
-                    let _ = SetEvent(ev);
-                    let _ = CloseHandle(ev);
-                    log("Signaled NocanNotch.OpenSettingsEvent to running instance");
-                }
+            log("Exiting: ERROR_ALREADY_EXISTS - signaling running instance to open Settings");
+            let event_name: Vec<u16> = "NocanNotch.OpenSettingsEvent\0".encode_utf16().collect();
+            if let Ok(ev) = OpenEventW(EVENT_MODIFY_STATE, false, PCWSTR(event_name.as_ptr())) {
+                let _ = SetEvent(ev);
+                let _ = CloseHandle(ev);
+                log("Signaled NocanNotch.OpenSettingsEvent to running instance");
             }
             return Ok(());
         }

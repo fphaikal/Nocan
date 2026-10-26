@@ -18,12 +18,12 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, GetSystemMetrics, GetWindowLongPtrW,
-    IsWindow, LoadCursorW, LoadIconW, PostMessageW, RegisterClassExW, SetForegroundWindow,
-    SetWindowLongPtrW, ShowWindow, CS_HREDRAW, CS_VREDRAW, GWLP_USERDATA, IDC_ARROW,
-    IDI_APPLICATION, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE, SW_SHOW, WM_CLOSE, WM_DESTROY,
-    WM_ERASEBKGND, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_PAINT, WM_USER, WNDCLASSEXW, WS_CAPTION,
-    WS_EX_APPWINDOW, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU,
+    AdjustWindowRectEx, BringWindowToTop, CreateWindowExW, DefWindowProcW, GetSystemMetrics,
+    GetWindowLongPtrW, IsWindow, LoadCursorW, LoadIconW, PostMessageW, RegisterClassExW,
+    SetForegroundWindow, SetWindowLongPtrW, ShowWindow, CS_HREDRAW, CS_VREDRAW, GWLP_USERDATA,
+    IDC_ARROW, IDI_APPLICATION, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE, SW_RESTORE, SW_SHOW, WM_CLOSE,
+    WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_PAINT, WM_USER, WNDCLASSEXW,
+    WS_CAPTION, WS_EX_APPWINDOW, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU,
 };
 
 use crate::config::AppSettings;
@@ -65,7 +65,8 @@ impl SettingsWindow {
                         (*ptr).notch_hwnd = notch_hwnd;
                         let _ = InvalidateRect(hwnd, None, false);
                     }
-                    let _ = ShowWindow(hwnd, SW_SHOW);
+                    let _ = ShowWindow(hwnd, SW_RESTORE);
+                    let _ = BringWindowToTop(hwnd);
                     let _ = SetForegroundWindow(hwnd);
                     return Ok(hwnd);
                 }
@@ -185,6 +186,7 @@ impl SettingsWindow {
             crate::config::debug_log("SettingsWindow state initialized, calling ShowWindow");
 
             let _ = ShowWindow(hwnd, SW_SHOW);
+            let _ = BringWindowToTop(hwnd);
             let _ = SetForegroundWindow(hwnd);
 
             Ok(hwnd)
