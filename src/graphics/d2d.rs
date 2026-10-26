@@ -602,7 +602,7 @@ impl D2DContext {
 
     /// Draws the authentic Nocan `.ambient` bottom-up masked horizontal gradient glow
     /// (used by both the Nocan Mascot bar and the Lyrics mode ambient background).
-    /// Matches `nocan.original.exe` (`0x140038f0f` & `0x140039002`) and `web_nocan.html`:
+    /// Matches `nocan.original.exe` (`0x140038f0f` & `0x140039002`):
     /// - Horizontal gradient across `[body_left + shift_x .. body_left + body_w + shift_x]`
     /// - Masked vertically by the 6-stop alpha gradient from `y = body_h` (alpha 1.0)
     ///   up to `y = body_h * (1.0 - height_ratio)` (alpha 0.0)

@@ -175,7 +175,7 @@ pub struct NotchWindow {
 impl NotchWindow {
     pub fn create(media_service: MediaService) -> Result<HWND> {
         let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None)?.into() };
-        let class_name: Vec<u16> = "NotchWindow\0".encode_utf16().collect();
+        let class_name: Vec<u16> = "NocanWindow\0".encode_utf16().collect();
 
         let wnd_class = WNDCLASSEXW {
             cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,

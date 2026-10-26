@@ -76,7 +76,10 @@ impl DiscordRpcService {
         let running = Arc::clone(&self.running);
 
         std::thread::spawn(move || {
-            let _ = std::fs::write("C:\\Users\\abufa\\AppData\\Local\\Nocan\\nocan_discord.log", "Discord service thread started\n");
+            let base = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| "C:\\Users\\abufa\\AppData\\Local".to_string());
+            let log_dir = PathBuf::from(base).join("Nocan");
+            let _ = std::fs::create_dir_all(&log_dir);
+            let _ = std::fs::write(log_dir.join("nocan_discord.log"), "Discord service thread started\n");
             let mut ipc = DiscordIpc::new(client_id);
             let mut last_track = String::new();
 

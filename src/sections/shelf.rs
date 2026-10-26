@@ -23,7 +23,7 @@ pub struct ShelfSection {
 impl ShelfSection {
     pub fn new() -> Self {
         let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| "C:\\".to_string());
-        let mut p = PathBuf::from(local_appdata);
+        let mut p = PathBuf::from(&local_appdata);
         p.push("Nocan");
         p.push("Shelf");
         let _ = std::fs::create_dir_all(&p);

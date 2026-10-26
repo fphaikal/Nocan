@@ -58,7 +58,12 @@ impl MediaService {
             let mut cached_thumb: Option<Arc<Vec<u8>>> = None;
             let mut thumb_retry_count: u32 = 0;
 
-            let _ = std::fs::write("C:\\Users\\abufa\\AppData\\Local\\Nocan\\nocan_media.log", "Media service thread started\n");
+            let base = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| "C:\\Users\\abufa\\AppData\\Local".to_string());
+            let log_dir = std::path::PathBuf::from(base).join("Nocan");
+            let _ = std::fs::create_dir_all(&log_dir);
+            let media_log = log_dir.join("nocan_media.log");
+
+            let _ = std::fs::write(&media_log, "Media service thread started\n");
             while running.load(Ordering::SeqCst) {
                 match poll_current_media(&mut cached_key, &mut cached_thumb, &mut thumb_retry_count) {
                     Ok(info) => {
@@ -70,7 +75,7 @@ impl MediaService {
                         let _ = std::fs::OpenOptions::new()
                             .create(true)
                             .append(true)
-                            .open("C:\\Users\\abufa\\AppData\\Local\\Nocan\\nocan_media.log")
+                            .open(&media_log)
                             .and_then(|mut f| {
                                 use std::io::Write;
                                 writeln!(f, "poll_current_media err: {:?}", e)

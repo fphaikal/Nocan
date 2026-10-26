@@ -113,7 +113,9 @@ impl AppSettings {
     pub fn config_path() -> PathBuf {
         let base = std::env::var("LOCALAPPDATA")
             .unwrap_or_else(|_| "C:\\Users\\abufa\\AppData\\Local".to_string());
-        PathBuf::from(base).join("Nocan").join("settings.json")
+        let nocan_dir = PathBuf::from(&base).join("Nocan");
+        let _ = std::fs::create_dir_all(&nocan_dir);
+        nocan_dir.join("settings.json")
     }
 
     pub fn load() -> Self {
@@ -142,7 +144,23 @@ impl AppSettings {
 
 pub fn debug_log(msg: &str) {
     use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("C:\\Users\\abufa\\AppData\\Local\\Nocan\\nocan_debug.log") {
-        let _ = writeln!(f, "[{}] {}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(), msg);
+    let base = std::env::var("LOCALAPPDATA")
+        .unwrap_or_else(|_| "C:\\Users\\abufa\\AppData\\Local".to_string());
+    let log_dir = PathBuf::from(base).join("Nocan");
+    let _ = std::fs::create_dir_all(&log_dir);
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_dir.join("nocan_debug.log"))
+    {
+        let _ = writeln!(
+            f,
+            "[{}] {}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            msg
+        );
     }
 }

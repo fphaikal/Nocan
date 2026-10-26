@@ -20,15 +20,18 @@ use integrations::media::MediaService;
 use notch::window::NotchWindow;
 
 fn main() -> Result<()> {
-    std::panic::set_hook(Box::new(|info| {
-        let _ = std::fs::write("C:\\Users\\abufa\\AppData\\Local\\Nocan\\nocan_panic.log", format!("{:?}", info));
+    let base = std::env::var("LOCALAPPDATA")
+        .unwrap_or_else(|_| "C:\\Users\\abufa\\AppData\\Local".to_string());
+    let log_dir = std::path::PathBuf::from(base).join("Nocan");
+    let _ = std::fs::create_dir_all(&log_dir);
+
+    let panic_log_path = log_dir.join("nocan_panic.log");
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = std::fs::write(&panic_log_path, format!("{:?}", info));
     }));
 
     let log = |msg: &str| {
-        use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("C:\\Users\\abufa\\AppData\\Local\\Nocan\\nocan_debug.log") {
-            let _ = writeln!(f, "[{}] {}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(), msg);
-        }
+        crate::config::debug_log(msg);
     };
 
     log("Starting nocan...");
