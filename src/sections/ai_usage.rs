@@ -4,6 +4,12 @@ use crate::graphics::d2d::D2DContext;
 use crate::graphics::dwrite::DWriteContext;
 use crate::integrations::ai_usage::{format_tokens, AiTab, AiUsageService, AiUsageSummary};
 
+// Official 48x48 Premultiplied BGRA8 logos embedded directly into the binary
+const LOGO_GEMINI: &[u8] = include_bytes!("../../assets/logos/gemini.bgra");
+const LOGO_CLAUDE: &[u8] = include_bytes!("../../assets/logos/claude.bgra");
+const LOGO_CODEX: &[u8] = include_bytes!("../../assets/logos/codex.bgra");
+const LOGO_OPENCODE: &[u8] = include_bytes!("../../assets/logos/opencode.bgra");
+
 pub struct AiUsageSection {
     pub service: AiUsageService,
     pub active_tab: AiTab,
@@ -30,24 +36,24 @@ impl AiUsageSection {
         let top = bounds.top;
 
         // 1. Check 4 Logo Buttons in dedicated Logo Dock (y: top + 27.0 .. top + 53.0)
-        if y >= top + 27.0 && y <= top + 53.0 {
-            // Button 0 (Antigravity): left + 118.0 .. left + 154.0
-            if x >= left + 118.0 && x <= left + 154.0 {
+        if y >= top + 26.0 && y <= top + 54.0 {
+            // Button 0 (Antigravity / Gemini): left + 116.0 .. left + 152.0
+            if x >= left + 116.0 && x <= left + 152.0 {
                 self.active_tab = AiTab::Antigravity;
                 return true;
             }
-            // Button 1 (Claude): left + 158.0 .. left + 194.0
-            if x >= left + 158.0 && x <= left + 194.0 {
+            // Button 1 (Claude): left + 156.0 .. left + 192.0
+            if x >= left + 156.0 && x <= left + 192.0 {
                 self.active_tab = AiTab::Claude;
                 return true;
             }
-            // Button 2 (Codex): left + 198.0 .. left + 234.0
-            if x >= left + 198.0 && x <= left + 234.0 {
+            // Button 2 (Codex): left + 196.0 .. left + 232.0
+            if x >= left + 196.0 && x <= left + 232.0 {
                 self.active_tab = AiTab::Codex;
                 return true;
             }
-            // Button 3 (OpenCode): left + 238.0 .. left + 274.0
-            if x >= left + 238.0 && x <= left + 274.0 {
+            // Button 3 (OpenCode): left + 236.0 .. left + 272.0
+            if x >= left + 236.0 && x <= left + 272.0 {
                 self.active_tab = AiTab::OpenCode;
                 return true;
             }
@@ -73,36 +79,70 @@ impl AiUsageSection {
     ) {
         let left = bounds.left;
         let top = bounds.top;
+        let body_w = bounds.right - bounds.left;
+        let body_h = bounds.bottom - bounds.top;
 
-        // Current provider and brand palette based on active tab
-        let (current_prov, brand_color, brand_glow_color, active_brand_name) = match self.active_tab {
+        // Active provider configuration & vibrant ambient gradient stops
+        let (current_prov, brand_color, brand_glow_color, active_brand_name, ambient_stops) = match self.active_tab {
             AiTab::Antigravity => (
                 &self.summary.antigravity,
                 D2D1_COLOR_F { r: 66.0 / 255.0, g: 133.0 / 255.0, b: 244.0 / 255.0, a: 1.0 },
-                D2D1_COLOR_F { r: 66.0 / 255.0, g: 133.0 / 255.0, b: 244.0 / 255.0, a: 0.25 },
+                D2D1_COLOR_F { r: 66.0 / 255.0, g: 133.0 / 255.0, b: 244.0 / 255.0, a: 0.30 },
                 "Antigravity",
+                [
+                    (0.00, D2D1_COLOR_F { r: 24.0 / 255.0, g: 50.0 / 255.0, b: 125.0 / 255.0, a: 0.85 }),
+                    (0.50, D2D1_COLOR_F { r: 66.0 / 255.0, g: 133.0 / 255.0, b: 244.0 / 255.0, a: 0.90 }),
+                    (1.00, D2D1_COLOR_F { r: 124.0 / 255.0, g: 58.0 / 255.0, b: 237.0 / 255.0, a: 0.80 }),
+                ],
             ),
             AiTab::Claude => (
                 &self.summary.claude,
                 D2D1_COLOR_F { r: 217.0 / 255.0, g: 119.0 / 255.0, b: 87.0 / 255.0, a: 1.0 },
-                D2D1_COLOR_F { r: 217.0 / 255.0, g: 119.0 / 255.0, b: 87.0 / 255.0, a: 0.25 },
+                D2D1_COLOR_F { r: 217.0 / 255.0, g: 119.0 / 255.0, b: 87.0 / 255.0, a: 0.30 },
                 "Claude",
+                [
+                    (0.00, D2D1_COLOR_F { r: 124.0 / 255.0, g: 45.0 / 255.0, b: 18.0 / 255.0, a: 0.85 }),
+                    (0.50, D2D1_COLOR_F { r: 217.0 / 255.0, g: 119.0 / 255.0, b: 87.0 / 255.0, a: 0.90 }),
+                    (1.00, D2D1_COLOR_F { r: 245.0 / 255.0, g: 158.0 / 255.0, b: 11.0 / 255.0, a: 0.75 }),
+                ],
             ),
             AiTab::Codex => (
                 &self.summary.codex,
                 D2D1_COLOR_F { r: 16.0 / 255.0, g: 163.0 / 255.0, b: 127.0 / 255.0, a: 1.0 },
-                D2D1_COLOR_F { r: 16.0 / 255.0, g: 163.0 / 255.0, b: 127.0 / 255.0, a: 0.25 },
+                D2D1_COLOR_F { r: 16.0 / 255.0, g: 163.0 / 255.0, b: 127.0 / 255.0, a: 0.30 },
                 "Codex",
+                [
+                    (0.00, D2D1_COLOR_F { r: 6.0 / 255.0, g: 78.0 / 255.0, b: 59.0 / 255.0, a: 0.85 }),
+                    (0.50, D2D1_COLOR_F { r: 16.0 / 255.0, g: 163.0 / 255.0, b: 127.0 / 255.0, a: 0.90 }),
+                    (1.00, D2D1_COLOR_F { r: 52.0 / 255.0, g: 211.0 / 255.0, b: 153.0 / 255.0, a: 0.75 }),
+                ],
             ),
             AiTab::OpenCode => (
                 &self.summary.opencode,
                 D2D1_COLOR_F { r: 6.0 / 255.0, g: 182.0 / 255.0, b: 212.0 / 255.0, a: 1.0 },
-                D2D1_COLOR_F { r: 6.0 / 255.0, g: 182.0 / 255.0, b: 212.0 / 255.0, a: 0.25 },
+                D2D1_COLOR_F { r: 6.0 / 255.0, g: 182.0 / 255.0, b: 212.0 / 255.0, a: 0.30 },
                 "OpenCode",
+                [
+                    (0.00, D2D1_COLOR_F { r: 14.0 / 255.0, g: 116.0 / 255.0, b: 144.0 / 255.0, a: 0.85 }),
+                    (0.50, D2D1_COLOR_F { r: 6.0 / 255.0, g: 182.0 / 255.0, b: 212.0 / 255.0, a: 0.90 }),
+                    (1.00, D2D1_COLOR_F { r: 56.0 / 255.0, g: 189.0 / 255.0, b: 248.0 / 255.0, a: 0.75 }),
+                ],
             ),
         };
 
-        // 1. Header Title: "AI Usage" at left: 15px, top: 8px (vc with global date/clock)
+        // 1. Dynamic Ambient Background Glow (Lush provider-themed gradient atmosphere like music section!)
+        d2d.draw_ambient_glow(
+            left,
+            body_w,
+            body_h,
+            32.0, // corner_r
+            0.88, // height_ratio
+            0.38, // layer_opacity
+            0.0,  // shift_x
+            &ambient_stops,
+        );
+
+        // 2. Header Title: "AI Usage" at left: 15px, top: 8px (vc with global date/clock)
         let title_rect = D2D_RECT_F {
             left: left + 15.0,
             top: top + 8.0,
@@ -111,28 +151,28 @@ impl AiUsageSection {
         };
         dwrite.draw_text(&d2d.context, "AI Usage", title_rect, white_brush, &dwrite.format_title);
 
-        // 2. Logo-Only Selector Dock (top + 28.0 .. top + 52.0)
-        // Positioned below top bar so date/clock time (y: 8..28) is never obstructed!
+        // 3. Official Logo Selector Dock (top + 28.0 .. top + 52.0)
+        // Positioned below top bar so date/clock time (y: 8..28) is completely clear!
         let dock_bg_rect = D2D_RECT_F {
             left: left + 114.0,
             top: top + 28.0,
-            right: left + 278.0,
+            right: left + 274.0,
             bottom: top + 52.0,
         };
         d2d.fill_rounded_rect(dock_bg_rect, 12.0, 12.0, pill_bg_brush);
 
-        // 4 Logo Buttons: (Tab, Icon, left, right, brand_color)
-        let logo_tabs = [
-            (AiTab::Antigravity, "✦", left + 118.0, left + 154.0, D2D1_COLOR_F { r: 66.0 / 255.0, g: 133.0 / 255.0, b: 244.0 / 255.0, a: 1.0 }),
-            (AiTab::Claude, "✳", left + 158.0, left + 194.0, D2D1_COLOR_F { r: 217.0 / 255.0, g: 119.0 / 255.0, b: 87.0 / 255.0, a: 1.0 }),
-            (AiTab::Codex, "⬡", left + 198.0, left + 234.0, D2D1_COLOR_F { r: 16.0 / 255.0, g: 163.0 / 255.0, b: 127.0 / 255.0, a: 1.0 }),
-            (AiTab::OpenCode, ">_", left + 238.0, left + 274.0, D2D1_COLOR_F { r: 6.0 / 255.0, g: 182.0 / 255.0, b: 212.0 / 255.0, a: 1.0 }),
+        // 4 Official Logos: (Tab, Bytes, left, right, brand_color)
+        let logo_tabs: [(AiTab, &[u8], f32, f32, D2D1_COLOR_F); 4] = [
+            (AiTab::Antigravity, LOGO_GEMINI, left + 116.0, left + 152.0, D2D1_COLOR_F { r: 66.0 / 255.0, g: 133.0 / 255.0, b: 244.0 / 255.0, a: 1.0 }),
+            (AiTab::Claude, LOGO_CLAUDE, left + 156.0, left + 192.0, D2D1_COLOR_F { r: 217.0 / 255.0, g: 119.0 / 255.0, b: 87.0 / 255.0, a: 1.0 }),
+            (AiTab::Codex, LOGO_CODEX, left + 196.0, left + 232.0, D2D1_COLOR_F { r: 16.0 / 255.0, g: 163.0 / 255.0, b: 127.0 / 255.0, a: 1.0 }),
+            (AiTab::OpenCode, LOGO_OPENCODE, left + 236.0, left + 272.0, D2D1_COLOR_F { r: 6.0 / 255.0, g: 182.0 / 255.0, b: 212.0 / 255.0, a: 1.0 }),
         ];
 
         let btn_top = top + 30.0;
         let btn_bottom = top + 50.0;
 
-        for (tab, icon, btn_l, btn_r, b_col) in logo_tabs {
+        for (tab, logo_bytes, btn_l, btn_r, b_col) in logo_tabs {
             let is_active = tab == self.active_tab;
             let btn_rect = D2D_RECT_F {
                 left: btn_l,
@@ -149,24 +189,32 @@ impl AiUsageSection {
                 if let Ok(brand_b) = d2d.create_solid_brush(b_col) {
                     d2d.draw_rounded_rect(btn_rect, 8.0, 8.0, &brand_b, 1.2);
                 }
-                dwrite.draw_text(&d2d.context, icon, btn_rect, white_brush, &dwrite.format_button_center);
-            } else {
-                // Inactive logo button: clean translucent icon
-                dwrite.draw_text(&d2d.context, icon, btn_rect, dim_brush, &dwrite.format_button_center);
             }
+
+            // Draw official high-res 48x48 logo centered inside button (size: 16x16)
+            let logo_size = 16.0f32;
+            let logo_cx = (btn_l + btn_r) * 0.5;
+            let logo_cy = (btn_top + btn_bottom) * 0.5;
+            let logo_rect = D2D_RECT_F {
+                left: logo_cx - (logo_size * 0.5),
+                top: logo_cy - (logo_size * 0.5),
+                right: logo_cx + (logo_size * 0.5),
+                bottom: logo_cy + (logo_size * 0.5),
+            };
+            d2d.fill_rounded_rect_bitmap(logo_rect, 2.0, 2.0, logo_bytes, 48, 48);
         }
 
-        // Active Provider Label badge next to Logo Dock (right-aligned at left + 284..382)
+        // Active Provider Label badge next to Logo Dock (right-aligned at left + 280..382)
         let prov_label_rect = D2D_RECT_F {
-            left: left + 284.0,
+            left: left + 280.0,
             top: top + 29.0,
             right: left + 382.0,
             bottom: top + 51.0,
         };
         dwrite.draw_text(&d2d.context, active_brand_name, prov_label_rect, white_brush, &dwrite.format_regular_semibold_right);
 
-        // 3. Left Column: Primary Metrics
-        // Shifted to start at left + 46.0 to give 13px clearance from left navigation arrow (at left + 22.0)!
+        // 4. Left Column: Primary Metrics
+        // Positioned at left + 46.0 to give 13px clearance from the left navigation arrow (at left + 22.0)!
         let tokens_str = if current_prov.today_tokens > 0 {
             format_tokens(current_prov.today_tokens)
         } else if current_prov.total_tokens > 0 {
@@ -228,7 +276,7 @@ impl AiUsageSection {
         dwrite.draw_text(&d2d.context, &current_prov.status_text, badge_txt_rect, white_brush, &dwrite.format_small);
 
         // Vertical Divider at left: 194px
-        if let Ok(div_b) = d2d.create_solid_brush(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 0.10 }) {
+        if let Ok(div_b) = d2d.create_solid_brush(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 0.12 }) {
             d2d.fill_rect(
                 D2D_RECT_F {
                     left: left + 194.0,
@@ -240,7 +288,7 @@ impl AiUsageSection {
             );
         }
 
-        // 4. Right Column: Detailed Breakdown (3 Cards at top + 57, 78, 99)
+        // 5. Right Column: Detailed Breakdown (3 Cards at top + 57, 78, 99)
         let row1_txt = format!("Model: {}", shorten_model(&current_prov.active_model));
         let row2_txt = match self.active_tab {
             AiTab::Antigravity => {
@@ -308,7 +356,7 @@ impl AiUsageSection {
             dwrite.draw_text(&d2d.context, rows[i], txt_rect, white_brush, &dwrite.format_small);
         }
 
-        // 5. Bottom Proportional Usage Segment Bar (top + 122.0)
+        // 6. Bottom Proportional Usage Segment Bar (top + 122.0)
         let bar_left = left + 18.0;
         let bar_top = top + 122.0;
         let bar_w = 364.0;
