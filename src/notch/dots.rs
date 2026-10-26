@@ -2,7 +2,7 @@ use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 use windows::Win32::Graphics::Direct2D::ID2D1SolidColorBrush;
 use crate::graphics::d2d::D2DContext;
 
-pub const TOTAL_SECTIONS: usize = 6;
+pub const TOTAL_SECTIONS: usize = 7;
 
 pub struct DotsIndicator {
     pub active_index: usize,

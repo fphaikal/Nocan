@@ -45,6 +45,7 @@ use crate::notch::dots::TOTAL_SECTIONS;
 use crate::sections::focus::FocusSection;
 use crate::sections::music::MusicSection;
 use crate::sections::ai_usage::AiUsageSection;
+use crate::sections::openmaus::OpenMausSection;
 use crate::sections::shelf::ShelfSection;
 use crate::sections::todo::TodoSection;
 use crate::sections::water::WaterSection;
@@ -132,6 +133,7 @@ pub struct NotchWindow {
     water_sec: WaterSection,
     shelf_sec: ShelfSection,
     todo_sec: TodoSection,
+    openmaus_sec: OpenMausSection,
     ai_usage_sec: AiUsageSection,
     pub is_hovered: bool,
     pub mascot_enabled: bool,
@@ -293,6 +295,7 @@ impl NotchWindow {
             water_sec: WaterSection::new(),
             shelf_sec: ShelfSection::new(),
             todo_sec: TodoSection::new(),
+            openmaus_sec: OpenMausSection::new(),
             ai_usage_sec: AiUsageSection::new(),
             is_hovered: false,
             mascot_enabled: false,
@@ -520,11 +523,11 @@ impl NotchWindow {
         self.resize_and_dump(&format!("{}\\dump_mascot.raw", dir));
         self.mascot_enabled = false;
 
-        // 3. Expanded Sections 0..5
+        // 3. Expanded Sections 0..TOTAL_SECTIONS
         self.is_hovered = true;
         self.current_body_w = EXPANDED_W;
         self.current_h = EXPANDED_H;
-        for sec in 0..6 {
+        for sec in 0..TOTAL_SECTIONS {
             self.carousel.snap_to_section(sec);
             self.music_sec.show_lyrics = false;
             self.resize_and_dump(&format!("{}\\dump_sec_{}.raw", dir, sec));
@@ -921,6 +924,7 @@ impl NotchWindow {
 
         // Update active sections
         self.focus_sec.update();
+        self.openmaus_sec.refresh_if_needed();
         self.ai_usage_sec.update();
 
         let now_secs = std::time::SystemTime::now()
@@ -1250,6 +1254,16 @@ impl NotchWindow {
                             );
                         }
                         5 => {
+                            self.openmaus_sec.draw(
+                                &self.d2d,
+                                &self.dwrite,
+                                sec_bounds,
+                                white_b,
+                                dim_b,
+                                pill_b,
+                            );
+                        }
+                        6 => {
                             self.ai_usage_sec.draw(
                                 &self.d2d,
                                 &self.dwrite,
@@ -2198,7 +2212,8 @@ unsafe extern "system" fn wnd_proc(
                     4 => {
                         let _ = notch.todo_sec.on_click(sec_bounds, x, y);
                     }
-                    5 => {
+                    5 => {}
+                    6 => {
                         let _ = notch.ai_usage_sec.on_click(sec_bounds, x, y);
                     }
                     _ => {}
