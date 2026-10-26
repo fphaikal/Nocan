@@ -44,7 +44,7 @@ use crate::notch::carousel::Carousel;
 use crate::notch::dots::TOTAL_SECTIONS;
 use crate::sections::focus::FocusSection;
 use crate::sections::music::MusicSection;
-use crate::sections::openmaus::OpenMausSection;
+use crate::sections::ai_usage::AiUsageSection;
 use crate::sections::shelf::ShelfSection;
 use crate::sections::todo::TodoSection;
 use crate::sections::water::WaterSection;
@@ -132,7 +132,7 @@ pub struct NotchWindow {
     water_sec: WaterSection,
     shelf_sec: ShelfSection,
     todo_sec: TodoSection,
-    openmaus_sec: OpenMausSection,
+    ai_usage_sec: AiUsageSection,
     pub is_hovered: bool,
     pub mascot_enabled: bool,
     pub minimal_notch: bool,
@@ -293,7 +293,7 @@ impl NotchWindow {
             water_sec: WaterSection::new(),
             shelf_sec: ShelfSection::new(),
             todo_sec: TodoSection::new(),
-            openmaus_sec: OpenMausSection::new(),
+            ai_usage_sec: AiUsageSection::new(),
             is_hovered: false,
             mascot_enabled: false,
             minimal_notch: false,
@@ -921,7 +921,7 @@ impl NotchWindow {
 
         // Update active sections
         self.focus_sec.update();
-        self.openmaus_sec.refresh_if_needed();
+        self.ai_usage_sec.update();
 
         let now_secs = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1250,7 +1250,7 @@ impl NotchWindow {
                             );
                         }
                         5 => {
-                            self.openmaus_sec.draw(
+                            self.ai_usage_sec.draw(
                                 &self.d2d,
                                 &self.dwrite,
                                 sec_bounds,
@@ -2198,6 +2198,9 @@ unsafe extern "system" fn wnd_proc(
                     4 => {
                         let _ = notch.todo_sec.on_click(sec_bounds, x, y);
                     }
+                    5 => {
+                        let _ = notch.ai_usage_sec.on_click(sec_bounds, x, y);
+                    }
                     _ => {}
                 }
                 return LRESULT(0);
@@ -2289,7 +2292,7 @@ unsafe extern "system" fn wnd_proc(
                                 notch.minimal_notch = !notch.minimal_notch;
                             }
                             IDM_ABOUT => {
-                                let msg: Vec<u16> = "Nocan v1.1.0\nMusic, lyrics, focus timer, water reminder, to-do, file shelf & OpenMausBot.\nLyrics provided by LRCLIB (lrclib.net).\0".encode_utf16().collect();
+                                let msg: Vec<u16> = "Nocan v1.1.0\nMusic, lyrics, focus timer, water reminder, to-do, file shelf & AI Usage Tracker (Antigravity, Claude, Codex).\nLyrics provided by LRCLIB (lrclib.net).\0".encode_utf16().collect();
                                 let cap: Vec<u16> = "About Nocan\0".encode_utf16().collect();
                                 let _ = MessageBoxW(
                                     hwnd,

@@ -1,3 +1,4 @@
+pub mod ai_usage;
 pub mod focus;
 pub mod music;
 pub mod openmaus;
