@@ -13,6 +13,7 @@ pub enum AiTab {
     Antigravity = 0,
     Claude = 1,
     Codex = 2,
+    OpenCode = 3,
 }
 
 impl AiTab {
@@ -20,7 +21,8 @@ impl AiTab {
         match self {
             AiTab::Antigravity => AiTab::Claude,
             AiTab::Claude => AiTab::Codex,
-            AiTab::Codex => AiTab::Antigravity,
+            AiTab::Codex => AiTab::OpenCode,
+            AiTab::OpenCode => AiTab::Antigravity,
         }
     }
 }
@@ -50,6 +52,7 @@ pub struct AiUsageSummary {
     pub antigravity: ProviderUsage,
     pub claude: ProviderUsage,
     pub codex: ProviderUsage,
+    pub opencode: ProviderUsage,
     pub last_updated: String,
 }
 
@@ -89,10 +92,11 @@ impl AiUsageService {
         let antigravity = scan_antigravity(&today_prefix);
         let codex = scan_codex(&today_prefix);
         let claude = scan_claude(&today_prefix);
+        let opencode = scan_opencode(&today_prefix);
 
-        let total_today_tokens = antigravity.today_tokens + codex.today_tokens + claude.today_tokens;
-        let total_today_turns = antigravity.today_turns + codex.today_turns + claude.today_turns;
-        let total_lifetime_tokens = antigravity.total_tokens + codex.total_tokens + claude.total_tokens;
+        let total_today_tokens = antigravity.today_tokens + codex.today_tokens + claude.today_tokens + opencode.today_tokens;
+        let total_today_turns = antigravity.today_turns + codex.today_turns + claude.today_turns + opencode.today_turns;
+        let total_lifetime_tokens = antigravity.total_tokens + codex.total_tokens + claude.total_tokens + opencode.total_tokens;
 
         AiUsageSummary {
             total_today_tokens,
@@ -101,6 +105,7 @@ impl AiUsageService {
             antigravity,
             claude,
             codex,
+            opencode,
             last_updated: now_time,
         }
     }
@@ -515,10 +520,136 @@ fn scan_claude(today_prefix: &str) -> ProviderUsage {
     }
 
     if usage.total_tokens == 0 && usage.today_tokens == 0 {
-        // If no standalone claude tokens yet, display ready status
         if usage.status_text == "Standby" {
             usage.status_text = "Ready (Standby)".to_string();
         }
+    }
+
+    usage
+}
+
+// ---------------------------------------------------------------------------
+// OpenCode Scanner
+// ---------------------------------------------------------------------------
+fn scan_opencode(today_prefix: &str) -> ProviderUsage {
+    let mut usage = ProviderUsage {
+        name: "OpenCode".to_string(),
+        title: "OpenCode AI".to_string(),
+        active_model: "deepseek-v4.1-flash-free".to_string(),
+        status_text: "Standby".to_string(),
+        ..Default::default()
+    };
+
+    let user_profile = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\abufa".to_string());
+    let orca_dir = PathBuf::from(&user_profile).join("AppData").join("Roaming").join("orca");
+    let om_dir = PathBuf::from(&user_profile).join(".openmausbot").join("usage");
+    let opencode_dir = PathBuf::from(&user_profile).join(".config").join("opencode");
+
+    // 1. Read orca-opencode-usage.json
+    let orca_opencode = orca_dir.join("orca-opencode-usage.json");
+    if let Ok(content) = std::fs::read_to_string(orca_opencode) {
+        #[derive(Deserialize)]
+        struct OrcaOpenCode {
+            #[serde(rename = "dailyAggregates")]
+            daily_aggregates: Option<Vec<DailyAgg>>,
+            sessions: Option<Vec<SessionAgg>>,
+        }
+        #[derive(Deserialize)]
+        struct DailyAgg {
+            day: Option<String>,
+            #[serde(rename = "totalTokens")]
+            total_tokens: Option<u64>,
+            #[serde(rename = "inputTokens")]
+            input_tokens: Option<u64>,
+            #[serde(rename = "outputTokens")]
+            output_tokens: Option<u64>,
+            #[serde(rename = "cachedInputTokens")]
+            cached_input_tokens: Option<u64>,
+            #[serde(rename = "eventCount")]
+            event_count: Option<u64>,
+        }
+        #[derive(Deserialize)]
+        struct SessionAgg {
+            #[serde(rename = "totalTokens")]
+            total_tokens: Option<u64>,
+            #[serde(rename = "eventCount")]
+            event_count: Option<u64>,
+            #[serde(rename = "primaryModel")]
+            primary_model: Option<String>,
+        }
+
+        if let Ok(parsed) = serde_json::from_str::<OrcaOpenCode>(&content) {
+            if let Some(dailies) = parsed.daily_aggregates {
+                for d in dailies {
+                    if let Some(day_str) = d.day {
+                        if day_str == today_prefix {
+                            usage.today_tokens += d.total_tokens.unwrap_or(0);
+                            usage.today_turns += d.event_count.unwrap_or(0);
+                            usage.input_tokens_today += d.input_tokens.unwrap_or(0);
+                            usage.output_tokens_today += d.output_tokens.unwrap_or(0);
+                            usage.cached_tokens_today += d.cached_input_tokens.unwrap_or(0);
+                        }
+                    }
+                }
+            }
+            if let Some(sessions) = parsed.sessions {
+                for s in &sessions {
+                    usage.total_tokens += s.total_tokens.unwrap_or(0);
+                    usage.total_turns += s.event_count.unwrap_or(0);
+                }
+                if let Some(last) = sessions.last() {
+                    if let Some(pm) = &last.primary_model {
+                        usage.active_model = pm.clone();
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Scan OpenMausbot for opencodeGo runs
+    if let Ok(entries) = std::fs::read_dir(om_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+            if let Ok(file) = File::open(p) {
+                let reader = BufReader::new(file);
+                for line in reader.lines().flatten() {
+                    let trimmed = line.trim();
+                    if trimmed.contains("\"driverKind\":\"opencodeGo\"") {
+                        let inp = extract_json_int(trimmed, "\"input\":");
+                        let outp = extract_json_int(trimmed, "\"output\":");
+                        let tot = inp + outp;
+                        if trimmed.contains(&format!("\"at\":\"{}", today_prefix)) {
+                            usage.today_turns += 1;
+                            usage.today_tokens += tot;
+                            usage.input_tokens_today += inp;
+                            usage.output_tokens_today += outp;
+                        }
+                        usage.total_turns += 1;
+                        usage.total_tokens += tot;
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Status check
+    if opencode_dir.exists() {
+        usage.is_active = true;
+        usage.status_text = "Online Ready".to_string();
+    }
+
+    if usage.today_tokens > 0 {
+        usage.status_text = "Active Today".to_string();
+    }
+
+    if usage.active_model.starts_with("opencode/") {
+        usage.active_model = usage.active_model.replace("opencode/", "");
+    }
+    if usage.active_model.starts_with("opencodex/tokenrouter/") {
+        usage.active_model = usage.active_model.replace("opencodex/tokenrouter/", "");
     }
 
     usage
