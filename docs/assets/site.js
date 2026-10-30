@@ -27,7 +27,7 @@
     taskPage: 0,
     focusMode: 0,
     total: 1500,
-    trackIndex: 0,
+    musicPosition: 84,
     lyrics: true,
     waterGoal: 2000,
     reminder: true,
@@ -42,6 +42,7 @@
   let motionContext;
   let toastTimeout;
   let lastTick = Date.now();
+  let lastMusicTick = Date.now();
 
   try {
     const savedMotion = localStorage.getItem("nocan-site-motion");
@@ -206,7 +207,72 @@
     );
   }
 
+  function notchFrame(host) {
+    return host.matches(".notch-demo")
+      ? host
+      : host.querySelector(".native-compact-lyrics") ||
+          host.querySelector(".native-viewport");
+  }
+
+  function captureNotch(host) {
+    const frame = notchFrame(host);
+    return frame ? frame.getBoundingClientRect() : null;
+  }
+
+  function morphNotch(host, before, changed = false) {
+    const frame = notchFrame(host);
+    if (!frame || !before || !window.gsap || motionOff) return;
+    gsap.killTweensOf(frame);
+    gsap.set(frame, { scaleX: 1, scaleY: 1 });
+    const after = frame.getBoundingClientRect();
+    if (!after.width || !after.height) return;
+    const resized =
+      Math.abs(before.width - after.width) > 1 ||
+      Math.abs(before.height - after.height) > 1;
+    if (resized) {
+      gsap.fromTo(
+        frame,
+        {
+          scaleX: before.width / after.width,
+          scaleY: before.height / after.height,
+          transformOrigin: "50% 0%",
+        },
+        {
+          scaleX: 1,
+          scaleY: 1,
+          duration: 0.78,
+          ease: "elastic.out(1,.65)",
+          overwrite: true,
+          clearProps: "transform,transformOrigin",
+        },
+      );
+    }
+    if (changed || resized) {
+      const content = host.matches(".notch-demo")
+        ? [host.querySelector(state.open ? ".hero-demo-panel" : ".notch-face")]
+        : [
+            ...host.querySelectorAll(
+              ".native-header, .native-label, .native-button, .native-focus-ring, .native-task-row, .native-hourly, .native-lyrics, .native-album, .native-footer, .native-compact-lyrics > span",
+            ),
+          ];
+      gsap.fromTo(
+        content.filter(Boolean),
+        { opacity: 0 },
+        {
+          opacity: 1,
+          duration: 0.28,
+          delay: resized ? 0.12 : 0,
+          overwrite: true,
+          clearProps: "opacity",
+        },
+      );
+    }
+  }
+
   function renderHero() {
+    const host = $(".notch-demo");
+    const before = captureNotch(host);
+    const changed = host.dataset.demoMode !== state.mode;
     $(".notch-demo").dataset.demoMode = state.mode;
     $(".notch-demo").style.setProperty(
       "--expanded-width",
@@ -225,9 +291,12 @@
       ),
     );
     updateTimer();
+    $(".music-preview-credit").hidden = state.mode !== "music";
+    morphNotch(host, before, changed);
   }
 
   function openNotch(open = true) {
+    const before = captureNotch($(".notch-demo"));
     state.open = open;
     $(".notch-demo").classList.toggle("is-open", open);
     $(".notch-face").setAttribute("aria-expanded", String(open));
@@ -238,9 +307,12 @@
     $(".hero-demo-panel").inert = !open;
     requestAnimationFrame(() => NocanPreview.fit());
     updateTimer();
+    NocanPreview.fit();
+    morphNotch($(".notch-demo"), before, true);
   }
 
   function renderModule(module, animate = true) {
+    const before = captureNotch($(".explorer-preview"));
     state.module = module;
     const data = modules[module];
     $$("[data-module]").forEach((button) => {
@@ -256,12 +328,8 @@
     $(".module-description h3").textContent = data.heading;
     $(".module-description p").textContent = data.description;
     $(".module-preview-tools").hidden = module !== "focus";
-    if (animate && !motionOff && window.gsap)
-      gsap.fromTo(
-        $(".explorer-preview"),
-        { opacity: 0.3, y: 8 },
-        { opacity: 1, y: 0, duration: 0.35, overwrite: true },
-      );
+    $(".module-music-credit").hidden = module !== "music";
+    morphNotch($(".explorer-preview"), before, animate);
     updateTimer();
   }
 
@@ -270,10 +338,11 @@
     state.scene = scene;
     const data = modules[scene];
     const panel = $(".story-notch");
+    const before = captureNotch(panel);
     $(".flow-stage").dataset.scene = scene;
     panel.innerHTML =
       scene === "music"
-        ? `<div class="native-viewport" style="--native-width:426;--native-height:40;aspect-ratio:426/40"><div class="native-surface native-lyric-scene" style="width:426px;height:40px"><span class="native-compact-lyrics">A little room to find your rhythm.</span><span class="native-scene-chip"><span class="timer-dot"></span>24:59${icon("pause")}</span></div></div>`
+        ? `<div class="native-viewport" style="--native-width:426;--native-height:40;aspect-ratio:426/40"><div class="native-surface native-lyric-scene" style="width:426px;height:40px"><span class="native-compact-lyrics"><span>${NocanPreview.track.lyric}</span></span><span class="native-scene-chip"><span class="timer-dot"></span>24:59${icon("pause")}</span></div></div>`
         : NocanPreview.render(scene, state, { illustrative: true });
     NocanPreview.fit();
     const index = ["focus", "music", "water"].indexOf(scene);
@@ -283,26 +352,20 @@
       "A little care",
     ][index];
     $(".scene-count").textContent = `0${index + 1} / 03`;
-    $(".scene-track span").style.transform = `translateX(${index * 100}%)`;
+    if (motionOff)
+      $(".scene-track span").style.transform = `scaleX(${(index + 1) / 3})`;
+    $(".scene-disclaimer").textContent =
+      scene === "music"
+        ? "Bleachers · Merry Christmas, Please Don’t Call · 2024 · 3:22 · Preview without audio"
+        : "Illustrative preview of the desktop experience.";
     if (window.gsap && !motionOff) {
-      gsap.fromTo(
-        panel,
-        { y: 12, opacity: 0.4 },
-        { y: 0, opacity: 1, duration: 0.55, overwrite: true },
-      );
-      gsap.to($(".story-chip"), {
-        autoAlpha: scene === "music" ? 1 : 0,
-        x: scene === "music" ? 0 : -25,
-        y: scene === "music" ? 0 : 15,
-        duration: 0.5,
-        ease: "power3.out",
-        overwrite: true,
-      });
-    } else {
-      $(".story-chip").style.opacity = scene === "music" ? "1" : "0";
-      $(".story-chip").style.visibility =
-        scene === "music" ? "visible" : "hidden";
-      $(".story-chip").style.transform = "none";
+      morphNotch(panel, before, true);
+      if (scene === "music")
+        gsap.fromTo(
+          $(".native-scene-chip"),
+          { x: -26, opacity: 0 },
+          { x: 0, opacity: 1, duration: 0.45, delay: 0.18, ease: "power3.out" },
+        );
     }
     $$(".flow-chapter").forEach((chapter) =>
       chapter.classList.toggle("is-active", chapter.dataset.chapter === scene),
@@ -390,6 +453,20 @@
           ease: "none",
           scrollTrigger: { start: 0, end: "max", scrub: 0.2 },
         });
+        gsap.fromTo(
+          ".scene-track span",
+          { scaleX: 0 },
+          {
+            scaleX: 1,
+            ease: "none",
+            scrollTrigger: {
+              trigger: ".flow-story",
+              start: "top 58%",
+              end: "bottom 58%",
+              scrub: 0.35,
+            },
+          },
+        );
         $$(".reveal").forEach((element) =>
           gsap.from(element, {
             y: 30,
@@ -449,7 +526,11 @@
     if (off) {
       if (window.gsap) {
         gsap.killTweensOf(
-          ".story-notch, .story-chip, .pupils, .water-glass, .explorer-preview",
+          ".story-notch, .native-viewport, .notch-demo, .native-compact-lyrics, .native-scene-chip, .pupils, .explorer-preview",
+        );
+        gsap.set(
+          ".native-viewport, .notch-demo, .native-compact-lyrics, .native-scene-chip",
+          { clearProps: "transform,transformOrigin,opacity" },
         );
         gsap.set(".story-notch, .explorer-preview", { opacity: 1, y: 0 });
       }
@@ -642,8 +723,13 @@
     }
     const track = event.target.closest("[data-track]");
     if (track) {
-      state.trackIndex =
-        (state.trackIndex + Number(track.dataset.track) + 3) % 3;
+      state.musicPosition = Math.max(
+        0,
+        Math.min(
+          NocanPreview.track.duration,
+          state.musicPosition + Number(track.dataset.track) * 15,
+        ),
+      );
       refreshPreviews();
     }
     if (event.target.closest("[data-water-goal]")) {
@@ -812,6 +898,25 @@
   findRelease();
   setInterval(() => {
     const now = Date.now();
+    if (
+      state.musicPlaying &&
+      !document.hidden &&
+      (state.mode === "music" || state.module === "music")
+    ) {
+      const elapsed = Math.floor((now - lastMusicTick) / 1000);
+      if (elapsed >= 1) {
+        state.musicPosition =
+          (state.musicPosition + elapsed) % NocanPreview.track.duration;
+        lastMusicTick += elapsed * 1000;
+        $$(".native-music-elapsed").forEach(
+          (element) => (element.textContent = formatTime(state.musicPosition)),
+        );
+        $$("[data-music-progress]").forEach(
+          (element) =>
+            (element.style.width = `${(state.musicPosition / NocanPreview.track.duration) * 100}%`),
+        );
+      }
+    } else lastMusicTick = now;
     if (state.running && !document.hidden) {
       const elapsed = Math.floor((now - lastTick) / 1000);
       if (elapsed >= 1) {

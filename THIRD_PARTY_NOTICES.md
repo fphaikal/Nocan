@@ -24,4 +24,6 @@ The icons under `assets/logos`, and their website copies under `docs/assets/prov
 
 Lyrics, album artwork, media metadata, stock-market data, and externally hosted source icons are supplied by their respective services or applications. Their terms and rights remain separate from Nocan's source-code license.
 
+The website's `docs/assets/bleachers-merry-christmas.jpg` identifies Bleachers' single _Merry Christmas, Please Don't Call_ (℗ 2024 Dirty Hit). The artwork and metadata were obtained from the [Apple Music catalog](https://music.apple.com/us/album/merry-christmas-please-dont-call/1775877095?i=1775877096) for the requested music-interface example. Artwork and the short lyric excerpt retain their original rights and are not covered by the project's MIT license. No song audio or full lyrics are included.
+
 Nocan draws its desktop interface with Windows APIs and uses installed fonts. No Apple system framework or font is bundled. The Nocan tiger runtime icon is included under `assets/mascot/runtime`; the mascot documentation describes the included artwork and renderer.

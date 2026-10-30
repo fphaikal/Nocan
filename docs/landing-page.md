@@ -16,6 +16,12 @@ The browser previews use illustrative data, are labeled as previews, and do not 
 
 The timer chip uses the native 164 × 36 proportions and green-to-amber-to-red progression. It joins the compact notch during normal use and detaches beside active lyrics. Opening the full notch hides the detached chip, as in the desktop app.
 
+GSAP morphs the notch silhouette between its measured bounds when opening, collapsing, or changing section. Content fades after the shape starts moving, and the lyric timer enters separately. Native concave corners attach to the screen edge. Preview scaling uses layout width rather than transformed bounds, so morph animations do not change the final scale.
+
+The music example is Bleachers' [Merry Christmas, Please Don't Call](https://music.apple.com/us/album/merry-christmas-please-dont-call/1775877095?i=1775877096), released in 2024, with a duration of 3:22. Metadata and the single artwork come from Apple's public catalog. The preview contains a short refrain only; no audio or complete lyrics are bundled. Playback controls move an illustrative progress clock.
+
+ScrollTrigger pins the desktop narrative, changes Focus/Music/Water scenes, and scrubs the progress track. Smaller screens keep the illustration sticky above the chapters while their triggers remain active. The motion toggle and operating-system reduced-motion preference remain respected. When verifying the page, restore the motion setting instead of leaving an interactive preview paused after a check.
+
 GSAP and ScrollTrigger 3.15.0 are bundled under `assets/vendor`. Their copyright notices are retained, with license details in `assets/vendor/GSAP-NOTICE.txt`. No package installation is needed to serve the production page.
 
 The page respects reduced-motion preferences and offers a persistent motion toggle. Desktop scrolling pins the feature illustration; smaller viewports use a flowing layout. Module tabs support arrow keys, Home, and End. Interactive controls have focus indicators and mobile touch targets.

@@ -214,40 +214,43 @@
     );
   }
 
+  const track = {
+    title: "Merry Christmas, Please Don’t Call",
+    artist: "Bleachers",
+    album: "Merry Christmas, Please Don’t Call - Single",
+    year: 2024,
+    duration: 202,
+    lyric: "Merry Christmas, please don’t call",
+    artwork: "assets/bleachers-merry-christmas.jpg",
+  };
+
   function music(s, illustrative) {
-    const track = ["Quiet hours", "A little room", "Find your rhythm"][
-      s.trackIndex % 3
-    ];
     const lyric = s.lyrics;
+    const x = lyric ? 96 : 120,
+      right = lyric ? 220 : 424,
+      position = illustrative ? 84 : s.musicPosition;
     return (
-      `<div class="native-album" style="${box(24, 44, lyric ? 56 : 80, lyric ? 56 : 80)}">${svg("music")}</div>` +
+      `<div class="native-album" style="${box(24, 44, lyric ? 56 : 80, lyric ? 56 : 80)}"><img src="${track.artwork}" alt="Merry Christmas, Please Don’t Call single artwork" width="80" height="80"/></div>` +
       label(
-        track,
-        lyric ? 96 : 120,
+        `<span class="native-song-title ${s.musicPlaying ? "is-playing" : ""}" style="--title-window:${right - x}px" title="${escape(track.title)}">${track.title}</span>`,
+        x,
         44,
-        lyric ? 124 : 304,
+        right - x,
         24,
-        "native-title",
+        "native-title native-track-title",
       ) +
+      label(track.artist, x, 70, right - x, 20, "native-sub native-muted") +
+      `<span class="native-progress" style="${box(lyric ? 24 : 120, lyric ? 106 : 96, lyric ? 196 : 304, 3)}"><i data-music-progress style="width:${(position / track.duration) * 100}%"></i></span>` +
       label(
-        "Browser preview · no audio",
-        lyric ? 96 : 120,
-        70,
-        lyric ? 124 : 304,
-        20,
-        "native-sub native-muted",
-      ) +
-      `<span class="native-progress" style="${box(lyric ? 24 : 120, lyric ? 106 : 96, lyric ? 196 : 304, 3)}"><i style="width:37%"></i></span>` +
-      label(
-        "01:24",
+        time(position),
         lyric ? 24 : 120,
         lyric ? 112 : 102,
         54,
         14,
-        "native-small native-muted",
+        "native-small native-muted native-music-elapsed",
       ) +
       label(
-        "03:48",
+        time(track.duration),
         lyric ? 182 : 386,
         lyric ? 112 : 102,
         38,
@@ -260,9 +263,7 @@
         132,
         32,
         28,
-        'data-lyrics aria-label="Toggle lyrics preview" aria-pressed="' +
-          lyric +
-          '"',
+        `data-lyrics aria-label="Toggle lyrics preview" aria-pressed="${lyric}"`,
         lyric ? "is-selected" : "",
         illustrative,
       ) +
@@ -272,7 +273,7 @@
         132,
         32,
         28,
-        'data-track="-1" aria-label="Previous preview song"',
+        'data-track="-1" aria-label="Rewind preview by 15 seconds"',
         "",
         illustrative,
       ) +
@@ -282,9 +283,7 @@
         128,
         36,
         36,
-        'data-music-action aria-label="' +
-          (s.musicPlaying ? "Pause" : "Play") +
-          ' music preview"',
+        `data-music-action aria-label="${s.musicPlaying ? "Pause" : "Play"} music preview"`,
         "native-primary",
         illustrative,
       ) +
@@ -294,12 +293,12 @@
         132,
         32,
         28,
-        'data-track="1" aria-label="Next preview song"',
+        'data-track="1" aria-label="Forward preview by 15 seconds"',
         "",
         illustrative,
       ) +
       (lyric
-        ? `<div class="native-lyrics">${label("A little room to find your rhythm.", 0, 0, 280, 28, "native-lyric-active")}${label("Let the next good moment in.", 0, 28, 280, 28, "native-muted")}${label("One little thing at a time.", 0, 56, 280, 28, "native-muted")}</div>`
+        ? `<div class="native-lyrics">${label("···", 0, 0, 280, 28, "native-muted")}${label(track.lyric, 0, 28, 280, 28, "native-lyric-active")}${label("···", 0, 56, 280, 28, "native-muted")}${label("Short lyric preview · no audio", 0, 94, 280, 18, "native-small native-muted")}</div>`
         : "")
     );
   }
@@ -670,7 +669,7 @@
     document.querySelectorAll(".native-viewport").forEach((element) => {
       element.style.setProperty(
         "--native-scale",
-        element.getBoundingClientRect().width /
+        element.clientWidth /
           Number(element.style.getPropertyValue("--native-width")),
       );
       resize.observe(element);
@@ -722,5 +721,5 @@
     return `<svg class="tiger-eyes" viewBox="0 0 188 40" aria-hidden="true"><g fill="#8cc7ff">${dots}</g><g class="native-face-features"><g fill="#fff">${stripes}${eyes}</g><g class="pupils" fill="#1a1714">${pupils}</g><g stroke="#fff" stroke-width="1.25" stroke-linecap="round">${whiskers}</g></g></svg>`;
   }
 
-  window.NocanPreview = { render, fit, mascot };
+  window.NocanPreview = { render, fit, mascot, track };
 })();
