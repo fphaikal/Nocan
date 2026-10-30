@@ -1,0 +1,2 @@
+# Keep upstream animation bundles intact without applying project whitespace rules.
+docs/assets/vendor/*.js -whitespace

@@ -6,6 +6,8 @@ A native Windows desktop notch for music, focus sessions, hydration, tasks, file
 
 The interface is in English. The name combines **Notch** and **Macan**, the Indonesian word for tiger.
 
+The [interactive website](https://fphaikal.github.io/Nocan/) includes a browser preview and a scroll-driven feature tour. Its static source lives in `docs/`; see [website documentation](docs/landing-page.md) for animation, publication, and custom-domain details.
+
 ![Nocan focus timer and task list](docs/images/notch.png)
 
 ## Contents

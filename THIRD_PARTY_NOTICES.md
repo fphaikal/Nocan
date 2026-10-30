@@ -14,6 +14,10 @@ cargo metadata --locked --offline --format-version 1
 
 Cargo's downloaded registry sources contain the license files associated with each dependency. Include the applicable dependency notices when distributing compiled software; the root license alone is not a replacement for those notices.
 
+## Website animation libraries
+
+The landing page includes GSAP and ScrollTrigger 3.15.0 under `docs/assets/vendor`. These libraries are covered by the GSAP Standard License, not the root MIT license. Their original license headers are preserved. See `docs/assets/vendor/GSAP-NOTICE.txt` and https://gsap.com/standard-license.
+
 ## Provider marks and external content
 
 The icons under `assets/logos` identify Gemini, Claude, Codex, and OpenCode integrations. Their names and marks belong to their respective owners. They do not indicate affiliation or endorsement, and the project's MIT license does not grant trademark rights.

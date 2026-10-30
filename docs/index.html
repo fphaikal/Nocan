@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#faf9f6" />
+    <title>Nocan | A little notch. A better flow.</title>
+    <meta
+      name="description"
+      content="Meet Nocan, a free, open-source desktop notch for Windows. Music, focus, hydration, tasks, and local AI activity in one small space."
+    />
+    <meta
+      property="og:title"
+      content="Nocan | A little notch. A better flow."
+    />
+    <meta
+      property="og:description"
+      content="A small, animated companion for your Windows desktop. Free, open source, and built with Rust."
+    />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:image"
+      content="https://fphaikal.github.io/Nocan/images/notch.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="assets/nocan.png" type="image/png" />
+    <link rel="stylesheet" href="assets/site.css" />
+    <script defer src="assets/vendor/gsap.min.js"></script>
+    <script defer src="assets/vendor/ScrollTrigger.min.js"></script>
+    <script defer src="assets/site.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <svg
+      class="svg-library"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <defs>
+        <symbol id="i-windows" viewBox="0 0 24 24">
+          <path
+            fill="currentColor"
+            d="M2 4.5 11 3v8H2zm11-1.8L22 1v10h-9zM2 13h9v8l-9-1.5zm11 0h9v10l-9-1.7z"
+          />
+        </symbol>
+        <symbol id="i-github" viewBox="0 0 24 24">
+          <path
+            fill="currentColor"
+            d="M12 .8a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.2.8-.6v-2.1c-3.4.7-4.1-1.5-4.1-1.5-.5-1.4-1.3-1.7-1.3-1.7-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6A4.6 4.6 0 0 1 5.8 8c-.1-.3-.5-1.6.1-3.3 0 0 1-.3 3.4 1.3a11.5 11.5 0 0 1 6.2 0c2.4-1.6 3.4-1.3 3.4-1.3.6 1.7.2 3 .1 3.3a4.6 4.6 0 0 1 1.2 3.2c0 4.7-2.8 5.7-5.5 6 .5.4.8 1.1.8 2.2v3c0 .4.2.7.8.6A11.4 11.4 0 0 0 12 .8Z"
+          />
+        </symbol>
+        <symbol id="i-play" viewBox="0 0 24 24">
+          <path fill="currentColor" d="m8 4 13 8-13 8z" />
+        </symbol>
+        <symbol id="i-pause" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M6 4h4v16H6zm8 0h4v16h-4z" />
+        </symbol>
+        <symbol id="i-focus" viewBox="0 0 24 24">
+          <circle cx="12" cy="13" r="8" />
+          <path d="M9 2h6m-3 3V2m0 7v5l3 2M18 5l2 2" />
+        </symbol>
+        <symbol id="i-music" viewBox="0 0 24 24">
+          <path d="M9 18V5l11-2v13M9 8l11-2" />
+          <ellipse cx="6" cy="18" rx="3" ry="2.5" />
+          <ellipse cx="17" cy="16" rx="3" ry="2.5" />
+        </symbol>
+        <symbol id="i-water" viewBox="0 0 24 24">
+          <path d="M12 2C9 7 5 10 5 15a7 7 0 0 0 14 0c0-5-4-8-7-13Z" />
+          <path d="M8 15c0 2 1 3 3 4" />
+        </symbol>
+        <symbol id="i-tasks" viewBox="0 0 24 24">
+          <rect x="4" y="3" width="16" height="18" rx="3" />
+          <path d="m7 9 1 1 2-3m3 2h4m-10 6 1 1 2-3m3 2h4" />
+        </symbol>
+        <symbol id="i-files" viewBox="0 0 24 24">
+          <path d="M3 7V5a2 2 0 0 1 2-2h5l3 3h6a2 2 0 0 1 2 2v11H3Z" />
+          <path d="M3 10h18" />
+        </symbol>
+        <symbol id="i-bot" viewBox="0 0 24 24">
+          <rect x="4" y="7" width="16" height="13" rx="4" />
+          <path d="M12 7V3m-2 0h4M8 12h1m6 0h1m-8 4h8M1 11v5m22-5v5" />
+        </symbol>
+        <symbol id="i-usage" viewBox="0 0 24 24">
+          <path d="M4 3v18h17M8 16v-5m5 5V7m5 9V3" />
+        </symbol>
+        <symbol id="i-stocks" viewBox="0 0 24 24">
+          <path d="M3 3v18h18M6 16l5-6 4 3 6-8m-5 0h5v5" />
+        </symbol>
+        <symbol id="i-check" viewBox="0 0 24 24">
+          <path d="m5 12 4 4L19 6" />
+        </symbol>
+        <symbol id="i-copy" viewBox="0 0 24 24">
+          <rect x="8" y="8" width="12" height="13" rx="2" />
+          <path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3" />
+        </symbol>
+        <symbol id="i-motion" viewBox="0 0 24 24">
+          <path d="M3 8h10a4 4 0 1 0-4-4M2 12h16a4 4 0 1 1-4 4M5 16h3" />
+        </symbol>
+        <symbol id="i-arrow" viewBox="0 0 24 24">
+          <path d="M5 19 19 5M5 5h14v14" />
+        </symbol>
+        <symbol id="i-close" viewBox="0 0 24 24">
+          <path d="m6 6 12 12M6 18 18 6" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <header class="site-header">
+      <div class="scroll-progress" aria-hidden="true"></div>
+      <nav class="navigation wrap" aria-label="Main navigation">
+        <a class="wordmark" href="#"
+          ><img src="assets/nocan.png" width="36" height="36" alt="" /><span
+            >Nocan<span class="wordmark-dot">.</span></span
+          ></a
+        >
+        <div class="nav-links">
+          <a href="#experience">The experience</a
+          ><a href="#features">Features</a><a href="#source">Open source</a>
+        </div>
+        <div class="nav-actions">
+          <button
+            class="motion-button"
+            type="button"
+            aria-label="Pause animations"
+            aria-pressed="false"
+          >
+            <svg class="icon"><use href="#i-motion" /></svg
+            ><span>Motion on</span></button
+          ><a class="nav-get" href="#get-nocan"
+            >Get Nocan <svg class="icon"><use href="#i-arrow" /></svg
+          ></a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <p class="eyebrow hero-intro">
+          <svg class="icon"><use href="#i-windows" /></svg> A little company for
+          your Windows desktop
+        </p>
+        <h1 id="hero-title">
+          <span>A little notch.</span><span>A better <em>flow.</em></span>
+        </h1>
+        <p class="hero-description">
+          Your music. Your focus. Your next little thing.<br />Nocan keeps them
+          close, in a space that feels right at home.
+        </p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#get-nocan"
+            ><svg class="icon"><use href="#i-windows" /></svg> Get Nocan for
+            Windows</a
+          ><a
+            class="button button-text"
+            href="https://github.com/fphaikal/Nocan"
+            target="_blank"
+            rel="noopener"
+            ><svg class="icon"><use href="#i-github" /></svg> View on GitHub</a
+          >
+        </div>
+        <div class="desktop-demo" id="desktop-demo">
+          <div class="desktop-screen">
+            <svg
+              class="wallpaper"
+              viewBox="0 0 1200 600"
+              preserveAspectRatio="xMidYMid slice"
+              aria-hidden="true"
+            >
+              <defs>
+                <linearGradient id="sky" x2="0" y2="1">
+                  <stop stop-color="#ecf0f7" />
+                  <stop offset="1" stop-color="#adc5e6" />
+                </linearGradient>
+                <linearGradient id="hill" x2="0" y2="1">
+                  <stop stop-color="#e3eaf4" />
+                  <stop offset="1" stop-color="#c4d5eb" />
+                </linearGradient>
+              </defs>
+              <path fill="url(#sky)" d="M0 0h1200v600H0z" />
+              <path
+                fill="#9cb6db"
+                d="M0 550C130 485 260 100 590 147S1020 520 1200 285v315H0Z"
+              />
+              <path
+                fill="#bed0e9"
+                d="M0 510c265 60 300-230 550-180s350 230 650 100v170H0Z"
+              />
+              <path
+                fill="url(#hill)"
+                d="M0 600V430c200 190 260-70 440-20S770 690 1200 460v140Z"
+              />
+            </svg>
+            <div class="desktop-menubar" aria-hidden="true">
+              <span>Nocan <span>Desktop preview</span></span
+              ><span class="desktop-date">Friday, 9:41 AM</span>
+            </div>
+            <div class="notch-demo" data-demo-mode="focus">
+              <button
+                class="notch-face"
+                type="button"
+                aria-label="Expand Nocan interactive preview"
+                aria-expanded="false"
+                aria-controls="hero-demo-panel"
+              >
+                <svg class="tiger-eyes" viewBox="0 0 180 40" aria-hidden="true">
+                  <g fill="#fff">
+                    <path d="m79 2 5 0-2 7Zm9-1h6l-3 9Zm11 1h5l-2 7Z" />
+                    <ellipse cx="70" cy="20" rx="6" ry="8" />
+                    <ellipse cx="110" cy="20" rx="6" ry="8" />
+                  </g>
+                  <g class="pupils" fill="#11131a">
+                    <ellipse cx="70" cy="20" rx="2.4" ry="4.8" />
+                    <ellipse cx="110" cy="20" rx="2.4" ry="4.8" />
+                  </g>
+                  <g fill="none" stroke="#fff" stroke-width="1.4">
+                    <path
+                      d="m51 21-18-3m18 7-19 1m19 3-17 5m95-13 18-3m-18 7 19 1m-19 3 17 5"
+                    />
+                  </g>
+                </svg>
+                <span class="compact-timer" hidden
+                  ><span class="timer-dot"></span><span data-timer>25:00</span
+                  ><svg class="icon"><use href="#i-focus" /></svg
+                ></span>
+              </button>
+              <div class="hero-demo-panel" id="hero-demo-panel" inert>
+                <div class="mini-header">
+                  <span class="mini-section-label"
+                    ><svg class="icon"><use href="#i-focus" /></svg
+                    ><span>Focus</span></span
+                  ><button
+                    class="mini-close"
+                    type="button"
+                    aria-label="Collapse preview"
+                  >
+                    <svg class="icon"><use href="#i-close" /></svg>
+                  </button>
+                </div>
+                <div class="hero-panel-content"></div>
+                <div class="mini-footer" aria-hidden="true">
+                  <i class="active"></i><i></i><i></i><i></i><i></i><i></i
+                  ><i></i><i></i>
+                </div>
+              </div>
+              <div
+                class="floating-timer"
+                aria-label="Detached timer preview"
+                hidden
+              >
+                <span class="timer-dot"></span><span data-timer>25:00</span
+                ><button
+                  type="button"
+                  data-timer-action
+                  aria-label="Start focus timer"
+                >
+                  <svg class="icon"><use href="#i-play" /></svg>
+                </button>
+              </div>
+            </div>
+            <div class="desktop-note" aria-hidden="true">
+              <span>A quieter kind<br />of productive.</span
+              ><svg viewBox="0 0 120 55">
+                <path
+                  d="M3 30c16-24 40-27 48-3S80 55 115 6"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                />
+                <path
+                  d="m102 5 14-1-1 14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                />
+              </svg>
+            </div>
+            <div class="desktop-taskbar" aria-hidden="true">
+              <svg class="icon"><use href="#i-windows" /></svg><span></span
+              ><svg class="icon"><use href="#i-files" /></svg
+              ><svg class="icon"><use href="#i-music" /></svg
+              ><img src="assets/nocan.png" width="27" height="27" alt="" />
+            </div>
+            <div class="water-confirmation" role="status"></div>
+          </div>
+          <div class="demo-toolbar">
+            <span
+              ><span class="live-dot"></span> Interactive browser preview</span
+            >
+            <div
+              class="demo-switcher"
+              role="group"
+              aria-label="Try a notch section"
+            >
+              <button type="button" data-hero-mode="focus" aria-pressed="true">
+                <svg class="icon"><use href="#i-focus" /></svg> Focus</button
+              ><button
+                type="button"
+                data-hero-mode="music"
+                aria-pressed="false"
+              >
+                <svg class="icon"><use href="#i-music" /></svg> Music</button
+              ><button
+                type="button"
+                data-hero-mode="water"
+                aria-pressed="false"
+              >
+                <svg class="icon"><use href="#i-water" /></svg> Water
+              </button>
+            </div>
+            <span class="demo-hint">Go on, give it a click.</span>
+          </div>
+        </div>
+        <div class="hero-footnote">
+          <span>Built for Windows</span><span>Written in Rust</span
+          ><span>Free &amp; open source</span
+          ><a href="#experience"
+            >Scroll to meet Nocan <span aria-hidden="true">↓</span></a
+          >
+        </div>
+      </section>
+
+      <section
+        class="experience section-space"
+        id="experience"
+        aria-labelledby="experience-title"
+      >
+        <div class="wrap">
+          <div class="section-heading reveal">
+            <p class="eyebrow">Less reaching. More doing.</p>
+            <h2 id="experience-title">
+              Small space.<br />Surprisingly capable.
+            </h2>
+          </div>
+          <div class="flow-layout">
+            <div class="flow-story">
+              <article class="flow-chapter is-active" data-chapter="focus">
+                <span class="chapter-number">01 / A little focus</span>
+                <h3>Find your rhythm.<br />Stay in it.</h3>
+                <p>
+                  Start a focus session and let the timer settle into your
+                  notch. Green, amber, then red: a quiet sense of how much time
+                  is left.
+                </p>
+                <span class="feature-note"
+                  >Pause. Breathe. Pick up where you left off.</span
+                >
+              </article>
+              <article class="flow-chapter" data-chapter="music">
+                <span class="chapter-number">02 / A little soundtrack</span>
+                <h3>Your next line.<br />Right on time.</h3>
+                <p>
+                  Follow the lyrics without switching away. When the words
+                  arrive, your timer makes a little room and floats alongside.
+                </p>
+                <span class="feature-note"
+                  >Windows media controls + synchronized lyrics.</span
+                >
+              </article>
+              <article class="flow-chapter" data-chapter="water">
+                <span class="chapter-number">03 / A little care</span>
+                <h3>A small pause.<br />A good habit.</h3>
+                <p>
+                  A gentle wave reminds you to drink. One click records it, with
+                  a small splash to celebrate. Your daily progress stays saved.
+                </p>
+                <span class="feature-note"
+                  >Hydration reminders, right inside the notch.</span
+                >
+              </article>
+            </div>
+            <div class="flow-visual">
+              <div class="flow-ambient" aria-hidden="true"></div>
+              <div class="flow-stage" data-scene="focus">
+                <div class="story-notch"></div>
+                <div class="story-chip">
+                  <span class="timer-dot"></span> 24:59
+                  <svg class="icon"><use href="#i-pause" /></svg>
+                </div>
+              </div>
+              <div class="flow-caption">
+                <span class="scene-label">A little focus</span
+                ><span class="scene-count">01 / 03</span>
+              </div>
+              <div class="scene-track" aria-hidden="true"><span></span></div>
+              <p class="scene-disclaimer">
+                Illustrative preview of the desktop experience.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="features section-space wrap"
+        id="features"
+        aria-labelledby="features-title"
+      >
+        <div class="section-heading heading-split reveal">
+          <div>
+            <p class="eyebrow">A place for your everyday</p>
+            <h2 id="features-title">
+              One notch.<br />Eight little possibilities.
+            </h2>
+          </div>
+          <p>
+            Keep your favorites close.<br />Hide the rest in Settings.<br />Make
+            room for the way you work.
+          </p>
+        </div>
+        <div class="explorer">
+          <div
+            class="module-list"
+            role="tablist"
+            aria-label="Explore Nocan features"
+            aria-orientation="vertical"
+          >
+            <button
+              id="module-music"
+              role="tab"
+              aria-selected="false"
+              aria-controls="module-panel"
+              tabindex="-1"
+              data-module="music"
+            >
+              <span>01</span
+              ><svg class="icon"><use href="#i-music" /></svg> Music
+              <span class="module-arrow" aria-hidden="true">↗</span>
+            </button>
+            <button
+              id="module-focus"
+              role="tab"
+              aria-selected="true"
+              aria-controls="module-panel"
+              data-module="focus"
+            >
+              <span>02</span
+              ><svg class="icon"><use href="#i-focus" /></svg> Focus
+              <span class="module-arrow" aria-hidden="true">↗</span>
+            </button>
+            <button
+              id="module-water"
+              role="tab"
+              aria-selected="false"
+              aria-controls="module-panel"
+              tabindex="-1"
+              data-module="water"
+            >
+              <span>03</span
+              ><svg class="icon"><use href="#i-water" /></svg> Water
+              <span class="module-arrow" aria-hidden="true">↗</span>
+            </button>
+            <button
+              id="module-files"
+              role="tab"
+              aria-selected="false"
+              aria-controls="module-panel"
+              tabindex="-1"
+              data-module="files"
+            >
+              <span>04</span
+              ><svg class="icon"><use href="#i-files" /></svg> Files
+              <span class="module-arrow" aria-hidden="true">↗</span>
+            </button>
+            <button
+              id="module-tasks"
+              role="tab"
+              aria-selected="false"
+              aria-controls="module-panel"
+              tabindex="-1"
+              data-module="tasks"
+            >
+              <span>05</span
+              ><svg class="icon"><use href="#i-tasks" /></svg> Tasks
+              <span class="module-arrow" aria-hidden="true">↗</span>
+            </button>
+            <button
+              id="module-openmaus"
+              role="tab"
+              aria-selected="false"
+              aria-controls="module-panel"
+              tabindex="-1"
+              data-module="openmaus"
+            >
+              <span>06</span
+              ><svg class="icon"><use href="#i-bot" /></svg> OpenMaus
+              <span class="module-arrow" aria-hidden="true">↗</span>
+            </button>
+            <button
+              id="module-usage"
+              role="tab"
+              aria-selected="false"
+              aria-controls="module-panel"
+              tabindex="-1"
+              data-module="usage"
+            >
+              <span>07</span><svg class="icon"><use href="#i-usage" /></svg> AI
+              Usage <span class="module-arrow" aria-hidden="true">↗</span>
+            </button>
+            <button
+              id="module-stocks"
+              role="tab"
+              aria-selected="false"
+              aria-controls="module-panel"
+              tabindex="-1"
+              data-module="stocks"
+            >
+              <span>08</span
+              ><svg class="icon"><use href="#i-stocks" /></svg> Stocks
+              <span class="module-arrow" aria-hidden="true">↗</span>
+            </button>
+          </div>
+          <div
+            class="module-panel"
+            id="module-panel"
+            role="tabpanel"
+            aria-labelledby="module-focus"
+            tabindex="0"
+          >
+            <div
+              class="explorer-preview"
+              aria-label="Interactive feature preview"
+            ></div>
+            <div class="module-description">
+              <span class="eyebrow module-kicker"
+                >Make time for what matters</span
+              >
+              <h3>Your focus, in view.</h3>
+              <p>
+                Work and break sessions, a timer that changes with you, and a
+                little extra time when you need it.
+              </p>
+              <span class="sample-label"
+                >Interactive preview · sample data</span
+              >
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="settings-section section-space"
+        id="make-it-yours"
+        aria-labelledby="settings-title"
+      >
+        <div class="wrap settings-layout">
+          <div class="settings-copy reveal">
+            <p class="eyebrow">Comfortably familiar</p>
+            <h2 id="settings-title">Make yourself<br />at home.</h2>
+            <p>
+              Light, dark, or in tune with your system. Pick an accent, choose
+              your sections, and find your favorite little details.
+            </p>
+            <div
+              class="theme-switcher"
+              role="group"
+              aria-label="Settings screenshot theme"
+            >
+              <button
+                type="button"
+                data-preview-theme="light"
+                aria-pressed="true"
+              >
+                Light</button
+              ><button
+                type="button"
+                data-preview-theme="dark"
+                aria-pressed="false"
+              >
+                Dark</button
+              ><button
+                type="button"
+                data-preview-theme="system"
+                aria-pressed="false"
+              >
+                System
+              </button>
+            </div>
+            <p class="settings-footnote">
+              Actual Nocan Settings. A Windows app with a familiar feel.
+            </p>
+          </div>
+          <figure class="settings-figure">
+            <img
+              id="settings-screenshot"
+              src="images/settings-light.png"
+              alt="Nocan appearance settings showing light, dark, and system themes, accent colors, fonts, and opacity"
+              width="960"
+              height="735"
+              loading="lazy"
+            />
+            <figcaption>Appearance settings</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section
+        class="source-section section-space wrap"
+        id="source"
+        aria-labelledby="source-title"
+      >
+        <div class="source-heading reveal">
+          <p class="eyebrow">Made to be made yours</p>
+          <h2 id="source-title">Open source.<br />Open possibilities.</h2>
+        </div>
+        <div class="source-details">
+          <p>
+            Nocan is free, written in Rust, and shared under the MIT license.
+            Read the code, suggest a feature, fix a bug, or make something of
+            your own.
+          </p>
+          <a
+            class="source-link"
+            href="https://github.com/fphaikal/Nocan"
+            target="_blank"
+            rel="noopener"
+            ><svg class="icon"><use href="#i-github" /></svg> fphaikal / Nocan
+            <svg class="icon"><use href="#i-arrow" /></svg
+          ></a>
+          <div class="source-facts">
+            <span>MIT licensed</span><span>Native Windows app</span
+            ><span>Local task &amp; water history</span>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="get-section wrap"
+        id="get-nocan"
+        aria-labelledby="get-title"
+      >
+        <div class="get-intro">
+          <img src="assets/nocan.png" alt="" width="72" height="72" />
+          <div>
+            <p class="eyebrow">A little upgrade to your everyday</p>
+            <h2 id="get-title">Meet your new notch.</h2>
+          </div>
+        </div>
+        <div class="get-actions">
+          <a
+            class="button button-primary"
+            id="release-link"
+            href="https://github.com/fphaikal/Nocan#build-and-run"
+            target="_blank"
+            rel="noopener"
+            ><svg class="icon"><use href="#i-windows" /></svg
+            ><span>Build for Windows</span></a
+          ><a
+            class="button button-text"
+            href="https://github.com/fphaikal/Nocan/blob/master/README.md#build-and-run"
+            target="_blank"
+            rel="noopener"
+            >Installation guide <svg class="icon"><use href="#i-arrow" /></svg
+          ></a>
+        </div>
+        <p class="release-note" id="release-note">
+          Build from source with Rust and the Windows build tools. Free under
+          the MIT license.
+        </p>
+        <div class="clone-command">
+          <code>git clone https://github.com/fphaikal/Nocan.git</code
+          ><button
+            type="button"
+            id="copy-command"
+            aria-label="Copy Git clone command"
+          >
+            <svg class="icon"><use href="#i-copy" /></svg><span>Copy</span>
+          </button>
+        </div>
+        <span class="copy-feedback" role="status" aria-live="polite"></span>
+      </section>
+
+      <section
+        class="questions wrap section-space"
+        aria-labelledby="questions-title"
+      >
+        <h2 class="reveal" id="questions-title">A few little answers.</h2>
+        <div class="faq-list">
+          <details>
+            <summary>Is Nocan really free?</summary>
+            <p>
+              Yes. Nocan's original project code is available under the MIT
+              license. You can use it, modify it, and contribute to it.
+              Third-party dependencies and provider marks keep their own
+              licenses and rights.
+            </p>
+          </details>
+          <details>
+            <summary>What do I need to run it?</summary>
+            <p>
+              A Windows desktop and graphics drivers supporting Direct3D 11 and
+              Direct2D. Windows 11 is the primary development environment.
+              Building from source also needs Rust and Windows build tools.
+              macOS and Linux are not currently supported.
+            </p>
+          </details>
+          <details>
+            <summary>Where does my data go?</summary>
+            <p>
+              Task lists, settings, and hydration history are saved locally in
+              your Windows user data folder. Lyrics, quotes, and optional
+              artwork use external services. The usage panels read available
+              local provider records. See the README for the complete
+              integration details.
+            </p>
+          </details>
+          <details>
+            <summary>Can I choose what appears?</summary>
+            <p>
+              Yes. Enable the sections you use and hide the others. You can also
+              change the mascot, notch behavior, theme, accent, font, and
+              productivity preferences in Settings.
+            </p>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer wrap">
+      <a class="wordmark" href="#"
+        ><img src="assets/nocan.png" width="32" height="32" alt="" /><span
+          >Nocan<span class="wordmark-dot">.</span></span
+        ></a
+      >
+      <p>A little space for your everyday.</p>
+      <div>
+        <a
+          href="https://github.com/fphaikal/Nocan"
+          target="_blank"
+          rel="noopener"
+          >GitHub</a
+        ><a
+          href="https://github.com/fphaikal/Nocan/issues"
+          target="_blank"
+          rel="noopener"
+          >Ideas &amp; issues</a
+        ><a
+          href="https://github.com/fphaikal/Nocan/blob/master/LICENSE"
+          target="_blank"
+          rel="noopener"
+          >MIT License</a
+        ><span>By fphaikal</span>
+      </div>
+    </footer>
+    <noscript
+      ><div class="noscript-note">
+        Enable JavaScript to try the interactive notch preview. You can still
+        read the page and get Nocan from GitHub.
+      </div></noscript
+    >
+  </body>
+</html>
