@@ -18,6 +18,22 @@
     musicPlaying: true,
     water: 500,
     taskDone: [false, false, false],
+    taskTitles: [
+      "Send the finished work",
+      "Review the latest design",
+      "Prepare meeting notes",
+    ],
+    taskEditing: null,
+    taskPage: 0,
+    focusMode: 0,
+    total: 1500,
+    trackIndex: 0,
+    lyrics: true,
+    waterGoal: 2000,
+    reminder: true,
+    mausTab: 0,
+    provider: 0,
+    stock: 0,
     open: false,
     scene: "focus",
     theme: "light",
@@ -101,52 +117,25 @@
     },
   };
 
-  function focusMarkup(illustrative = false) {
-    return `<div class="mini-focus"><div class="mini-ring">${icon("focus")}</div><div><div class="mini-time" ${illustrative ? "" : "data-timer"}>${illustrative ? "24:59" : formatTime(state.remaining)}</div><span class="mini-timer-description">${illustrative ? "A little time for your next idea" : state.running ? "One thing at a time" : "Ready when you are"}</span></div><div class="mini-focus-actions">${illustrative ? '<span class="mini-action">Focus session</span>' : `<button type="button" class="mini-action" data-timer-action>${icon(state.running ? "pause" : "play")}<span>${state.running ? "Pause" : state.started ? "Resume" : "Start"}</span></button><button type="button" class="mini-quiet" data-final-minute>Try final minute</button>`}</div></div>`;
-  }
-
-  function musicMarkup(illustrative = false) {
-    return `<div class="mini-music${state.musicPlaying ? "" : " is-paused"}"><div class="album-art">${icon("music")}</div><div class="mini-track"><strong>Quiet hours</strong><span>Browser preview · no audio</span></div>${illustrative ? '<div class="equalizer"><i></i><i></i><i></i><i></i></div>' : `<button type="button" class="music-control" data-music-action aria-label="${state.musicPlaying ? "Pause" : "Play"} music preview">${icon(state.musicPlaying ? "pause" : "play")}</button>`}</div><div class="mini-lyric">${state.musicPlaying || illustrative ? "A little room to find your rhythm." : "A little pause in the music."}</div>`;
-  }
-
-  function waterMarkup(illustrative = false) {
-    const water = illustrative ? 750 : state.water;
-    return `<div class="mini-water"><div class="water-glass"><div class="water-fill" style="--water-level:${Math.min((water / 2000) * 100, 100)}%"></div>${icon("water")}</div><div class="water-stat"><span ${illustrative ? "" : "data-water"} style="font:inherit;color:inherit">${(water / 1000).toFixed(2).replace(/0$/, "")}</span> <span>/ 2 L</span><small>Today · a little closer</small></div><div class="water-actions">${illustrative ? '<span class="mini-action">Water logged!</span>' : '<button class="mini-action" type="button" data-drink>+250 ml</button>'}</div></div>`;
-  }
-
-  function tasksMarkup() {
-    const tasks = [
-      "Make room for a good idea",
-      "Take a little break",
-      "Finish something that matters",
-    ];
-    return `<div class="task-done-count">${state.taskDone.filter(Boolean).length} / 3 done</div><div class="task-preview">${tasks.map((task, index) => `<button class="task-check" type="button" data-task="${index}" aria-pressed="${state.taskDone[index]}">${task}</button>`).join("")}</div>`;
-  }
-
-  function sampleMarkup(module) {
-    if (module === "focus") return focusMarkup();
-    if (module === "music") return musicMarkup();
-    if (module === "water") return waterMarkup();
-    if (module === "tasks") return tasksMarkup();
-    if (module === "files")
-      return `<div class="sample-row">${icon("files")}<div><strong>A good idea.pdf</strong><small>Ready when you need it</small></div><span class="sample-value">PDF</span></div><div class="sample-row">${icon("files")}<div><strong>Weekend plans.txt</strong><small>A little something for later</small></div><span class="sample-value">TXT</span></div>`;
-    if (module === "openmaus")
-      return `<div class="sample-row">${icon("check")}<div><strong>Agent finished responding</strong><small>Research assistant · example activity</small></div><span class="sample-value">Done</span></div><div class="sample-row">${icon("bot")}<div><strong>Daily summary</strong><small>Example automation schedule</small></div><span class="sample-value">09:00</span></div>`;
-    if (module === "usage")
-      return '<div class="sample-usage"><div><span>Example daily tokens</span><strong>24.8k</strong><small>Local usage records</small></div><div><span>Example active model</span><strong style="font-size:22px">Your model</strong><small>Input + output</small></div></div><svg class="sample-chart" viewBox="0 0 300 45" aria-hidden="true"><path d="M0 35h28l9-8 18 3 15-11 22 5 10-15 15 5 25-3 10 5 25-10 18 5 10-9 20 8 20-6 15 8 15-4 25 3"/></svg>';
-    return '<div class="sample-price">AAPL <small>+1.24%</small></div><div class="sample-tag">Illustrative ticker · sample data</div><svg class="sample-chart" viewBox="0 0 300 45" aria-hidden="true"><path d="m0 40 17-5 11 3 20-11 15 5 25-15 21 6 18-10 16 8 23-17 15 7 23-5 15 4 20-7 18 5 23-7"/></svg>';
-  }
-
   function formatTime(seconds) {
     return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   }
 
   function timerColor() {
-    if (state.remaining === 0) return "#245bb5";
-    if (!state.running) return "#4e5563";
-    if (state.remaining <= 60) return "#a5363f";
-    if (state.remaining <= 375) return "#80531b";
-    return "#154f3d";
+    const mix = (a, b, t) =>
+      `rgb(${a.map((channel, i) => Math.round((channel + (b[i] - channel) * Math.max(0, Math.min(1, t))) * 255)).join(" ")})`;
+    const ratio = state.remaining / state.total;
+    if (state.remaining === 0) return "#144a8f";
+    if (!state.running) return "#303640";
+    if (state.remaining <= 60)
+      return mix(
+        [0.45, 0.1, 0.13],
+        [0.62, 0.07, 0.12],
+        1 - state.remaining / 60,
+      );
+    if (ratio <= 0.25)
+      return mix([0.39, 0.29, 0.06], [0.48, 0.2, 0.05], 1 - ratio / 0.25);
+    return mix([0.06, 0.3, 0.2], [0.26, 0.3, 0.1], (1 - ratio) / 0.75);
   }
 
   function updateTimer() {
@@ -166,21 +155,69 @@
       );
     });
     const detached =
-      state.mode === "music" && state.musicPlaying && state.started;
-    $(".floating-timer").hidden = !detached;
+      state.mode === "music" &&
+      state.musicPlaying &&
+      state.lyrics &&
+      state.started;
+    $(".floating-timer").hidden = !detached || state.open;
     $(".floating-timer").style.backgroundColor = timerColor();
     $(".compact-timer").style.backgroundColor = timerColor();
+    $$(".native-header-timer").forEach(
+      (element) => (element.style.backgroundColor = timerColor()),
+    );
     $(".compact-timer").hidden = !state.started || state.open || detached;
-    $(".tiger-eyes").style.display =
-      state.started && !state.open && !detached ? "none" : "";
+    $(".native-mascot").hidden = state.started || detached;
+    $(".compact-lyric").hidden = !detached || state.open;
+    $(".notch-demo").classList.toggle("has-lyrics", detached && !state.open);
+    $$(
+      ".hero-panel-content .native-timer, .explorer-preview .native-timer",
+    ).forEach((element) => (element.textContent = formatTime(state.remaining)));
+    const percent = Math.max(
+      0,
+      Math.min(100, (1 - state.remaining / state.total) * 100),
+    );
+    $$(
+      ".hero-panel-content .native-focus-ring, .explorer-preview .native-focus-ring",
+    ).forEach((element) =>
+      element.style.setProperty("--progress", `${100 - percent}%`),
+    );
+    $$(
+      ".hero-panel-content .native-percent, .explorer-preview .native-percent",
+    ).forEach((element) => (element.textContent = `${Math.round(percent)}%`));
+    $$(
+      '.native-surface[data-native-module="focus"] .native-progress i',
+    ).forEach((element) => {
+      if (!element.closest(".story-notch")) element.style.width = `${percent}%`;
+    });
+    $$(
+      ".hero-panel-content .native-focus-status, .explorer-preview .native-focus-status",
+    ).forEach(
+      (element) =>
+        (element.textContent =
+          state.remaining === 0
+            ? "Session complete"
+            : state.running
+              ? "Stay focused • Session active"
+              : state.started
+                ? "Paused • Tap to resume"
+                : state.focusMode === 0
+                  ? "Ready to focus"
+                  : "Ready for a break"),
+    );
   }
 
   function renderHero() {
-    const data = modules[state.mode];
     $(".notch-demo").dataset.demoMode = state.mode;
-    $(".mini-section-label").innerHTML =
-      icon(data.icon) + `<span>${data.title}</span>`;
-    $(".hero-panel-content").innerHTML = sampleMarkup(state.mode);
+    $(".notch-demo").style.setProperty(
+      "--expanded-width",
+      `${state.mode === "tasks" ? 520 : state.mode === "openmaus" || (state.mode === "music" && state.lyrics) ? 560 : 448}px`,
+    );
+    $(".hero-panel-content").innerHTML = NocanPreview.render(
+      state.mode,
+      state,
+      { hero: true },
+    );
+    NocanPreview.fit();
     $$("[data-hero-mode]").forEach((button) =>
       button.setAttribute(
         "aria-pressed",
@@ -199,6 +236,7 @@
       `${open ? "Collapse" : "Expand"} Nocan interactive preview`,
     );
     $(".hero-demo-panel").inert = !open;
+    requestAnimationFrame(() => NocanPreview.fit());
     updateTimer();
   }
 
@@ -212,11 +250,12 @@
     });
     const panel = $(".module-panel");
     panel.setAttribute("aria-labelledby", `module-${module}`);
-    $(".explorer-preview").innerHTML =
-      `<div class="mini-header"><span class="mini-section-label">${icon(data.icon)}<span>${data.title}</span></span><span style="color:#a5adbb;font-size:9px">Nocan preview</span></div>${sampleMarkup(module)}`;
+    $(".explorer-preview").innerHTML = NocanPreview.render(module, state);
+    NocanPreview.fit();
     $(".module-kicker").textContent = data.kicker;
     $(".module-description h3").textContent = data.heading;
     $(".module-description p").textContent = data.description;
+    $(".module-preview-tools").hidden = module !== "focus";
     if (animate && !motionOff && window.gsap)
       gsap.fromTo(
         $(".explorer-preview"),
@@ -231,8 +270,12 @@
     state.scene = scene;
     const data = modules[scene];
     const panel = $(".story-notch");
-    panel.innerHTML = `<div class="mini-header"><span class="mini-section-label">${icon(data.icon)}<span>${data.title}</span></span><span style="color:#9da9ba;font-size:9px">9:41</span></div>${scene === "focus" ? focusMarkup(true) : scene === "music" ? musicMarkup(true) : waterMarkup(true)}`;
     $(".flow-stage").dataset.scene = scene;
+    panel.innerHTML =
+      scene === "music"
+        ? `<div class="native-viewport" style="--native-width:426;--native-height:40;aspect-ratio:426/40"><div class="native-surface native-lyric-scene" style="width:426px;height:40px"><span class="native-compact-lyrics">A little room to find your rhythm.</span><span class="native-scene-chip"><span class="timer-dot"></span>24:59${icon("pause")}</span></div></div>`
+        : NocanPreview.render(scene, state, { illustrative: true });
+    NocanPreview.fit();
     const index = ["focus", "music", "water"].indexOf(scene);
     $(".scene-label").textContent = [
       "A little focus",
@@ -289,6 +332,10 @@
         ? "Daily goal reached. A little win!"
         : "+250 ml. A little closer.";
     confirmation.classList.add("is-visible");
+    $$('.native-surface[data-native-module="water"]').forEach((element) => {
+      element.classList.remove("is-drinking");
+      requestAnimationFrame(() => element.classList.add("is-drinking"));
+    });
     clearTimeout(toastTimeout);
     toastTimeout = setTimeout(
       () => confirmation.classList.remove("is-visible"),
@@ -296,7 +343,7 @@
     );
     if (window.gsap && !motionOff)
       gsap.fromTo(
-        $$(".water-glass"),
+        $$('.native-surface[data-native-module="water"] .native-water-value'),
         { scale: 1.08 },
         { scale: 1, duration: 0.55, ease: "elastic.out(1, 0.45)" },
       );
@@ -415,10 +462,6 @@
   }
 
   $(".notch-face").addEventListener("click", () => openNotch(!state.open));
-  $(".mini-close").addEventListener("click", () => {
-    openNotch(false);
-    $(".notch-face").focus({ preventScroll: true });
-  });
   $$("[data-hero-mode]").forEach((button) =>
     button.addEventListener("click", () => {
       state.mode = button.dataset.heroMode;
@@ -467,6 +510,7 @@
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && state.open) {
+      if (event.target.closest("[data-task-form]")) return;
       openNotch(false);
       if ($(".notch-demo").contains(document.activeElement))
         $(".notch-face").focus({ preventScroll: true });
@@ -474,6 +518,20 @@
   });
 
   document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-collapse]")) {
+      openNotch(false);
+      $(".notch-face").focus({ preventScroll: true });
+      return;
+    }
+    const nav = event.target.closest("[data-native-nav]");
+    if (nav) {
+      if (nav.dataset.host === "hero") {
+        state.mode = nav.dataset.nativeNav;
+        renderHero();
+        openNotch(true);
+      } else renderModule(nav.dataset.nativeNav);
+      return;
+    }
     const focusHost = event.target.closest(
       ".hero-panel-content, .explorer-preview, .floating-timer",
     );
@@ -481,9 +539,20 @@
       "data-timer-action",
       "data-final-minute",
       "data-music-action",
+      "data-focus-reset",
+      "data-focus-add",
+      "data-focus-skip",
+      "data-focus-mode",
+      "data-lyrics",
+      "data-track",
+      "data-water-goal",
+      "data-water-reminder",
+      "data-maus-tab",
+      "data-provider",
+      "data-stock",
     ].find((attribute) => event.target.closest(`[${attribute}]`));
     if (event.target.closest("[data-timer-action]")) {
-      if (state.remaining === 0) state.remaining = 1500;
+      if (state.remaining === 0) state.remaining = state.total;
       state.started = true;
       state.running = !state.running;
       lastTick = Date.now();
@@ -504,7 +573,19 @@
       if (state.module === "music") renderModule("music", false);
     }
     if (event.target.closest("[data-drink]")) {
-      state.water = Math.min(state.water + 250, 3000);
+      state.water = Math.min(state.water + 250, 4000);
+      $$(".native-water-value").forEach(
+        (element) =>
+          (element.textContent = `${(state.water / 1000).toFixed(1)} / ${(state.waterGoal / 1000).toFixed(1)} L`),
+      );
+      $$(".native-water-percent").forEach(
+        (element) =>
+          (element.textContent = `Today · ${Math.round((state.water / state.waterGoal) * 100)}% of goal`),
+      );
+      $$(".native-hourly > span:nth-child(4) i").forEach(
+        (element) =>
+          (element.style.height = `${Math.min(100, Math.max(0, ((state.water - 500) / 400) * 100))}%`),
+      );
       $$("[data-water]").forEach(
         (element) =>
           (element.textContent = (state.water / 1000)
@@ -530,11 +611,121 @@
     if (task) {
       const index = Number(task.dataset.task);
       state.taskDone[index] = !state.taskDone[index];
-      renderModule("tasks", false);
-      $(`[data-task="${index}"]`).focus({ preventScroll: true });
+      refreshPreviews();
+      $(`[data-task="${index}"]`, focusHost)?.focus({ preventScroll: true });
+    }
+    if (event.target.closest("[data-focus-reset]")) {
+      state.remaining = state.total;
+      state.started = false;
+      state.running = false;
+      refreshPreviews();
+    }
+    if (event.target.closest("[data-focus-add]")) {
+      state.remaining += 300;
+      state.total = Math.max(state.total, state.remaining);
+      refreshPreviews();
+    }
+    const mode = event.target.closest("[data-focus-mode]");
+    if (mode || event.target.closest("[data-focus-skip]")) {
+      state.focusMode = mode
+        ? Number(mode.dataset.focusMode)
+        : (state.focusMode + 1) % 3;
+      state.total = [1500, 300, 900][state.focusMode];
+      state.remaining = state.total;
+      state.started = false;
+      state.running = false;
+      refreshPreviews();
+    }
+    if (event.target.closest("[data-lyrics]")) {
+      state.lyrics = !state.lyrics;
+      refreshPreviews();
+    }
+    const track = event.target.closest("[data-track]");
+    if (track) {
+      state.trackIndex =
+        (state.trackIndex + Number(track.dataset.track) + 3) % 3;
+      refreshPreviews();
+    }
+    if (event.target.closest("[data-water-goal]")) {
+      state.waterGoal = state.waterGoal === 2000 ? 3000 : 2000;
+      refreshPreviews();
+    }
+    if (event.target.closest("[data-water-reminder]")) {
+      state.reminder = !state.reminder;
+      refreshPreviews();
+    }
+    for (const [attribute, key] of [
+      ["data-maus-tab", "mausTab"],
+      ["data-provider", "provider"],
+      ["data-stock", "stock"],
+    ]) {
+      const control = event.target.closest(`[${attribute}]`);
+      if (control) {
+        state[key] = Number(control.getAttribute(attribute));
+        refreshPreviews();
+      }
+    }
+    if (event.target.closest("[data-task-new]")) {
+      state.taskEditing = -1;
+      state.taskPage = 0;
+      refreshPreviews();
+      $("input", focusHost)?.focus({ preventScroll: true });
+    }
+    const edit = event.target.closest("[data-task-edit]");
+    if (edit) {
+      state.taskEditing = Number(edit.dataset.taskEdit);
+      refreshPreviews();
+      $("input", focusHost)?.focus({ preventScroll: true });
+    }
+    const remove = event.target.closest("[data-task-delete]");
+    if (remove) {
+      const index = Number(remove.dataset.taskDelete);
+      state.taskTitles.splice(index, 1);
+      state.taskDone.splice(index, 1);
+      state.taskPage = Math.min(
+        state.taskPage,
+        Math.max(0, Math.ceil(state.taskTitles.length / 3) - 1),
+      );
+      refreshPreviews();
+      $("[data-task-new]", focusHost)?.focus({ preventScroll: true });
+    }
+    const page = event.target.closest("[data-task-page]");
+    if (page) {
+      state.taskPage = Number(page.dataset.taskPage);
+      refreshPreviews();
+    }
+    if (event.target.closest("[data-task-cancel]")) {
+      state.taskEditing = null;
+      refreshPreviews();
     }
     if (focusHost && activeControl)
       $(`[${activeControl}]`, focusHost)?.focus({ preventScroll: true });
+  });
+
+  function refreshPreviews() {
+    renderHero();
+    renderModule(state.module, false);
+  }
+  document.addEventListener("submit", (event) => {
+    if (!event.target.matches("[data-task-form]")) return;
+    event.preventDefault();
+    const value = event.target.elements.task.value.trim();
+    if (!value) {
+      event.target.elements.task.focus();
+      return;
+    }
+    if (state.taskEditing === -1) {
+      state.taskTitles.unshift(value);
+      state.taskDone.unshift(false);
+    } else state.taskTitles[state.taskEditing] = value;
+    state.taskEditing = null;
+    refreshPreviews();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && event.target.closest("[data-task-form]")) {
+      state.taskEditing = null;
+      refreshPreviews();
+    }
   });
 
   $("#desktop-demo").addEventListener("pointermove", (event) => {
@@ -613,6 +804,7 @@
     }
   }
 
+  $(".native-mascot").innerHTML = NocanPreview.mascot();
   renderHero();
   renderModule("focus", false);
   renderStory("focus");

@@ -20,7 +20,7 @@ The landing page includes GSAP and ScrollTrigger 3.15.0 under `docs/assets/vendo
 
 ## Provider marks and external content
 
-The icons under `assets/logos` identify Gemini, Claude, Codex, and OpenCode integrations. Their names and marks belong to their respective owners. They do not indicate affiliation or endorsement, and the project's MIT license does not grant trademark rights.
+The icons under `assets/logos`, and their website copies under `docs/assets/providers`, identify Gemini, Claude, Codex, and OpenCode integrations. Their names and marks belong to their respective owners. They do not indicate affiliation or endorsement, and the project's MIT license does not grant trademark rights.
 
 Lyrics, album artwork, media metadata, stock-market data, and externally hosted source icons are supplied by their respective services or applications. Their terms and rights remain separate from Nocan's source-code license.
 
