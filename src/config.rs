@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GeneralSettings {
     pub autostart: bool,
     pub mascot_enabled: bool,
@@ -13,7 +14,7 @@ impl Default for GeneralSettings {
     fn default() -> Self {
         Self {
             autostart: true,
-            mascot_enabled: false,
+            mascot_enabled: true,
             minimal_notch: false,
             auto_minimize_on_maximize: true,
         }
@@ -21,6 +22,7 @@ impl Default for GeneralSettings {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SectionSettings {
     pub show_music: bool,
     pub show_focus: bool,
@@ -67,6 +69,7 @@ impl SectionSettings {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AiUsageSettings {
     pub show_antigravity: bool,
     pub show_claude: bool,
@@ -92,6 +95,7 @@ impl Default for AiUsageSettings {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MusicSettings {
     pub ambient_glow_enabled: bool,
     pub ambient_opacity: f32,
@@ -113,6 +117,7 @@ impl Default for MusicSettings {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ProductivitySettings {
     pub focus_work_mins: u32,
     pub focus_break_mins: u32,
@@ -131,22 +136,49 @@ impl Default for ProductivitySettings {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeMode {
+    #[default]
+    Light,
+    Dark,
+    System,
+}
+
+impl ThemeMode {
+    pub fn is_dark(self, system_dark: bool) -> bool {
+        match self { Self::Light => false, Self::Dark => true, Self::System => system_dark }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppearanceSettings {
+    #[serde(default)]
+    pub theme: ThemeMode,
     pub accent_mode: u32, // 0: Auto, 1: Gemini Blue, 2: Coral, 3: Emerald, 4: Cyan, 5: Violet
     pub acrylic_opacity: f32,
+    #[serde(default = "default_font_family")]
+    pub font_family: String,
+}
+
+fn default_font_family() -> String {
+    "SF Pro Text".to_string()
 }
 
 impl Default for AppearanceSettings {
     fn default() -> Self {
         Self {
+            theme: ThemeMode::default(),
             accent_mode: 0,
             acrylic_opacity: 0.90,
+            font_family: default_font_family(),
         }
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppSettings {
     pub general: GeneralSettings,
     #[serde(default)]
@@ -155,46 +187,66 @@ pub struct AppSettings {
     pub music: MusicSettings,
     pub productivity: ProductivitySettings,
     pub appearance: AppearanceSettings,
+    #[serde(default = "default_openmaus_notifications")]
+    pub openmaus_notifications: bool,
+    #[serde(default = "default_stock_symbols")]
+    pub stock_symbols: Vec<String>,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self { general: GeneralSettings::default(), sections: SectionSettings::default(),
+            ai: AiUsageSettings::default(), music: MusicSettings::default(),
+            productivity: ProductivitySettings::default(), appearance: AppearanceSettings::default(),
+            stock_symbols: default_stock_symbols(), openmaus_notifications:true }
+    }
+}
+
+fn default_openmaus_notifications() -> bool { true }
+
+#[cfg(test)]
+mod openmaus_preferences_tests {
+    use super::*;
+    #[test]
+    fn existing_preferences_keep_their_values_when_notifications_are_added() {
+        let mut value=serde_json::to_value(AppSettings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("openmaus_notifications");
+        value["general"]["autostart"]=false.into();
+        let loaded:AppSettings=serde_json::from_value(value).unwrap();
+        assert!(loaded.openmaus_notifications);assert!(!loaded.general.autostart);
+    }
+    #[test]
+    fn preferences_from_older_versions_keep_known_fields() {
+        let loaded:AppSettings=serde_json::from_str(r#"{"general":{"autostart":false,"mascot_enabled":false},"productivity":{"water_daily_target_glasses":9}}"#).unwrap();
+        assert!(!loaded.general.autostart);assert!(!loaded.general.mascot_enabled);
+        assert_eq!(loaded.productivity.water_daily_target_glasses,9);
+        assert_eq!(loaded.productivity.focus_work_mins,25);assert!(loaded.openmaus_notifications);
+    }
+}
+
+fn default_stock_symbols() -> Vec<String> {
+    ["BBCA.JK", "BBRI.JK", "TLKM.JK", "ASII.JK"].iter().map(|s| s.to_string()).collect()
 }
 
 impl AppSettings {
     pub fn config_path() -> PathBuf {
-        let base = std::env::var("LOCALAPPDATA")
-            .unwrap_or_else(|_| "C:\\Users\\abufa\\AppData\\Local".to_string());
-        let nocan_dir = PathBuf::from(&base).join("Nocan");
-        let _ = std::fs::create_dir_all(&nocan_dir);
-        nocan_dir.join("settings.json")
+        crate::storage::data_dir().join("settings.json")
     }
 
     pub fn load() -> Self {
         let path = Self::config_path();
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            if let Ok(settings) = serde_json::from_str::<AppSettings>(&content) {
-                return settings;
-            }
-        }
-        let default_settings = Self::default();
-        let _ = default_settings.save();
-        default_settings
+        crate::storage::load_json(&path).ok().flatten().unwrap_or_default()
     }
 
     pub fn save(&self) -> bool {
         let path = Self::config_path();
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if let Ok(json) = serde_json::to_string_pretty(self) {
-            return std::fs::write(&path, json).is_ok();
-        }
-        false
+        crate::storage::save_json(&path,self).is_ok()
     }
 }
 
 pub fn debug_log(msg: &str) {
     use std::io::Write;
-    let base = std::env::var("LOCALAPPDATA")
-        .unwrap_or_else(|_| "C:\\Users\\abufa\\AppData\\Local".to_string());
-    let log_dir = PathBuf::from(base).join("Nocan");
+    let log_dir = crate::storage::data_dir();
     let _ = std::fs::create_dir_all(&log_dir);
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)

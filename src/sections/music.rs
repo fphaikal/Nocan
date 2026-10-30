@@ -12,6 +12,35 @@ pub struct LyricLine {
     pub text: String,
 }
 
+#[cfg(test)]
+mod timer_lyric_tests {
+    use super::*;
+
+    #[test]
+    fn timer_detaches_only_when_a_real_lyric_has_started_and_music_is_playing() {
+        let section = MusicSection::new();
+        *section.lyrics.lock().unwrap() = vec![
+            LyricLine { time_ms: 10_000, text: "First line".into() },
+            LyricLine { time_ms: 20_000, text: " ".into() },
+            LyricLine { time_ms: 30_000, text: "Next line".into() },
+        ];
+        section.lyrics_loaded.store(true, Ordering::SeqCst);
+        let mut track = MediaTrackInfo { title: "Test track".into(), is_playing: true, position_ms: 9_999, ..Default::default() };
+        assert_eq!(section.current_lyric_line(&track), None);
+        track.position_ms = 10_000;
+        assert_eq!(section.current_lyric_line(&track).as_deref(), Some("First line"));
+        track.position_ms = 20_000;
+        assert_eq!(section.current_lyric_line(&track), None);
+        track.position_ms = 30_000;
+        assert_eq!(section.current_lyric_line(&track).as_deref(), Some("Next line"));
+        track.is_playing = false;
+        assert_eq!(section.current_lyric_line(&track), None);
+        track.is_playing = true;
+        section.lyrics_loaded.store(false, Ordering::SeqCst);
+        assert_eq!(section.current_lyric_line(&track), None);
+    }
+}
+
 pub struct MusicSection {
     pub show_lyrics: bool,
     pub ambient_glow_enabled: bool,
@@ -25,15 +54,18 @@ pub struct MusicSection {
 }
 
 impl MusicSection {
+    pub fn visible_lyrics(&self, track: &MediaTrackInfo) -> (Vec<(String, bool)>, String) {
+        if track.title.is_empty() { return (vec![], "Play a song to load lyrics.".into()); }
+        if self.fetch_in_progress.load(Ordering::SeqCst) { return (vec![], "Loading lyrics...".into()); }
+        let Ok(lines)=self.lyrics.lock() else { return (vec![], "Lyrics are not available.".into()); };
+        if lines.is_empty() { return (vec![], "Lyrics are not available for this song.".into()); }
+        let active=lines.iter().rposition(|line|track.position_ms>=line.time_ms).unwrap_or(0);
+        let start=active.saturating_sub(1);
+        (lines.iter().enumerate().skip(start).take(4).map(|(i,line)|(line.text.clone(),i==active)).collect(), String::new())
+    }
+
     pub fn new() -> Self {
-        let default_lyrics = vec![
-            LyricLine { time_ms: 0, text: "we fold the summer light".to_string() },
-            LyricLine { time_ms: 4000, text: "into paper birds tonight".to_string() },
-            LyricLine { time_ms: 8000, text: "and send them through the sky".to_string() },
-            LyricLine { time_ms: 12000, text: "to find you by the sea".to_string() },
-            LyricLine { time_ms: 16000, text: "every wing a little song".to_string() },
-            LyricLine { time_ms: 20000, text: "that carries us along".to_string() },
-        ];
+        let default_lyrics = Vec::new();
         Self {
             show_lyrics: false,
             ambient_glow_enabled: true,
@@ -347,8 +379,9 @@ impl MusicSection {
         if lines.is_empty() {
             return None;
         }
-        let idx = lines.iter().rposition(|l| track.position_ms >= l.time_ms).unwrap_or(0);
-        Some(lines[idx].text.clone())
+        let idx = lines.iter().rposition(|l| track.position_ms >= l.time_ms)?;
+        let line = lines[idx].text.trim();
+        if line.is_empty() { None } else { Some(line.to_string()) }
     }
 
     /// Width in px needed by the visible lyric lines (or status text), used to size the notch dynamically.
@@ -793,7 +826,7 @@ fn fetch_lyrics_multitier(
     let call_api = |url: &str| -> Option<serde_json::Value> {
         for attempt in 0..2 {
             let resp = ureq::get(url)
-                .set("User-Agent", "Nocan/1.1.0 (https://fph.my.id)")
+                .set("User-Agent", concat!("Nocan/", env!("CARGO_PKG_VERSION")))
                 .timeout(std::time::Duration::from_secs(3))
                 .call();
 

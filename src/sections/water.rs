@@ -2,6 +2,134 @@ use windows::Win32::Graphics::Direct2D::Common::{D2D1_COLOR_F, D2D_RECT_F};
 use windows::Win32::Graphics::Direct2D::ID2D1SolidColorBrush;
 use crate::graphics::d2d::D2DContext;
 use crate::graphics::dwrite::DWriteContext;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use serde::{Deserialize,Serialize};
+
+#[derive(Clone,Default,Serialize,Deserialize)]
+struct WaterDay { intake_ml:u32, hourly_ml:[u32;8] }
+
+#[derive(Clone,Serialize,Deserialize)]
+struct WaterData {
+    version:u32,
+    day:(u16,u16,u16),
+    intake_ml:u32,
+    goal_ml:u32,
+    reminder_on:bool,
+    hourly_ml:[u32;8],
+    #[serde(default)]
+    history:BTreeMap<String,WaterDay>,
+}
+
+fn today()->(u16,u16,u16) {
+    let now=unsafe{windows::Win32::System::SystemInformation::GetLocalTime()};
+    (now.wYear,now.wMonth,now.wDay)
+}
+fn date_key(day:(u16,u16,u16))->String {format!("{:04}-{:02}-{:02}",day.0,day.1,day.2)}
+fn valid_day(day:(u16,u16,u16))->bool {
+    let (year,month,day)=day;
+    let leap=year%4==0 && (year%100!=0 || year%400==0);
+    let days=[31,if leap{29}else{28},31,30,31,30,31,31,30,31,30,31];
+    year>=1970 && (1..=12).contains(&month) && day>0 && day<=days[month.saturating_sub(1).min(11) as usize]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize,Ordering};
+    static SERIAL:AtomicUsize=AtomicUsize::new(0);
+    fn fixture()->PathBuf {
+        let dir=std::env::temp_dir().join(format!("nocan-water-{}-{}",std::process::id(),SERIAL.fetch_add(1,Ordering::Relaxed)));
+        std::fs::create_dir_all(&dir).unwrap();dir.join("water.json")
+    }
+    fn clean(path:&std::path::Path){std::fs::remove_dir_all(path.parent().unwrap()).unwrap();}
+
+    #[test]
+    fn new_day_resets_intake_but_keeps_reminder_and_goal() {
+        let mut water = WaterSection::new();
+        water.day = (2026, 10, 28);
+        water.goal_ml = 2000;
+        water.reminder_on = false;
+        water.intake_ml = 2000;
+        water.hourly_ml[0] = 250;
+        assert!(!water.reset_for_day((2026, 10, 28)));
+        assert_eq!(water.intake_ml, 2000);
+        assert!(water.reset_for_day((2026, 10, 29)));
+        assert_eq!(water.intake_ml, 0);
+        assert_eq!(water.hourly_ml, [0; 8]);
+        assert_eq!(water.goal_ml, 2000);
+        assert!(!water.reminder_on);
+        assert_eq!(water.history["2026-10-28"].intake_ml,2000);
+    }
+
+    #[test]
+    fn restart_and_version_replacement_keep_intake_and_reminder() {
+        let path=fixture();
+        let mut first=WaterSection::from_file(path.clone());
+        assert!(!path.exists(),"Loading an empty profile must not write a reset file");
+        assert!(first.drink(250));assert!(first.drink(500));assert!(first.toggle_reminder());
+        let hourly=first.hourly_ml;
+        drop(first);
+        let mut next_version=WaterSection::from_file(path.clone());
+        assert_eq!(next_version.intake_ml,750);assert_eq!(next_version.hourly_ml,hourly);assert!(!next_version.reminder_on);
+        assert!(next_version.drink(250));drop(next_version);
+        assert_eq!(WaterSection::from_file(path.clone()).intake_ml,1000);
+        clean(&path);
+    }
+
+    #[test]
+    fn changing_target_never_erases_the_recorded_amount() {
+        let path=fixture();let mut water=WaterSection::from_file(path.clone());
+        assert!(water.drink(4000));let hourly=water.hourly_ml;
+        for expected in [2000,2500,1500] {
+            assert!(water.cycle_settings());assert_eq!(water.goal_ml,expected);
+            assert_eq!(water.intake_ml,4000);assert_eq!(water.hourly_ml,hourly);
+        }
+        assert!(water.drink(250));assert_eq!(water.intake_ml,4250);
+        assert_eq!(WaterSection::from_file(path.clone()).intake_ml,4250);clean(&path);
+    }
+
+    #[test]
+    fn next_day_archives_old_counts_and_clock_rollback_restores_them() {
+        let path=fixture();let mut water=WaterSection::from_file_for_day(path.clone(),(2026,10,28));
+        let mut data=water.snapshot();data.intake_ml=1250;data.hourly_ml[2]=1250;assert!(water.commit(data));
+        drop(water);
+        let mut tomorrow=WaterSection::from_file_for_day(path.clone(),(2026,10,29));
+        assert_eq!(tomorrow.intake_ml,0);assert_eq!(tomorrow.history["2026-10-28"].intake_ml,1250);
+        let mut data=tomorrow.snapshot();data.intake_ml=250;data.hourly_ml[3]=250;assert!(tomorrow.commit(data));
+        assert!(tomorrow.reset_for_day((2026,10,28)));assert_eq!(tomorrow.intake_ml,1250);
+        assert_eq!(tomorrow.history["2026-10-29"].intake_ml,250);drop(tomorrow);
+        let again=WaterSection::from_file_for_day(path.clone(),(2026,10,29));assert_eq!(again.intake_ml,250);clean(&path);
+    }
+
+    #[test]
+    fn unreadable_or_future_data_is_preserved_instead_of_reset() {
+        for content in ["{incomplete",r#"{"version":2,"day":[2026,10,30],"intake_ml":1234,"hourly_ml":[0,0,0,0,0,0,0,0],"goal_ml":2000,"reminder_on":true}"#] {
+            let path=fixture();std::fs::write(&path,content).unwrap();
+            let mut water=WaterSection::from_file(path.clone());assert!(water.storage_error.is_some());
+            assert!(!water.drink(250));assert!(!water.toggle_reminder());assert!(!water.cycle_settings());
+            assert_eq!(std::fs::read_to_string(&path).unwrap(),content);clean(&path);
+        }
+    }
+
+    #[test]
+    fn failed_save_keeps_previous_counts_and_valid_backups_recover() {
+        let path=fixture();let mut water=WaterSection::from_file(path.clone());
+        assert!(water.drink(250));assert!(water.drink(250));
+        let good=std::fs::read(&path).unwrap();let hourly=water.hourly_ml;
+        let blocker=path.parent().unwrap().join("blocked");std::fs::write(&blocker,"file").unwrap();
+        water.file_path=Some(blocker.join("water.json"));
+        assert!(!water.drink(250));assert_eq!(water.intake_ml,500);assert_eq!(water.hourly_ml,hourly);
+        assert_eq!(std::fs::read(&path).unwrap(),good);
+        let backup=crate::storage::backup_path(&path);
+        let saved:WaterData=serde_json::from_slice(&std::fs::read(&backup).unwrap()).unwrap();
+        std::fs::write(&path,"{broken").unwrap();
+        let mut restored=WaterSection::from_file(path.clone());
+        assert!(restored.storage_error.is_none());assert_eq!(restored.intake_ml,saved.intake_ml);
+        assert!(restored.drink(250));assert_eq!(WaterSection::from_file(path.clone()).intake_ml,saved.intake_ml+250);
+        clean(&path);
+    }
+}
 
 pub struct WaterSection {
     pub intake_ml: u32,
@@ -9,17 +137,79 @@ pub struct WaterSection {
     pub reminder_on: bool,
     pub hourly_ml: [u32; 8], // 09..16
     pub anim_progress: f32,
+    day: (u16, u16, u16),
+    file_path:Option<PathBuf>,
+    history:BTreeMap<String,WaterDay>,
+    storage_blocked:bool,
+    pub storage_error:Option<String>,
+    next_day_retry:Option<std::time::Instant>,
 }
 
 impl WaterSection {
     pub fn new() -> Self {
+        #[cfg(test)] {Self::in_memory()}
+        #[cfg(not(test))] {Self::from_file(crate::storage::data_dir().join("water.json"))}
+    }
+
+    pub fn in_memory()->Self {
         Self {
-            intake_ml: 1500,
+            intake_ml: 0,
             goal_ml: 1500,
             reminder_on: true,
-            hourly_ml: [300, 200, 200, 150, 150, 200, 200, 200],
+            hourly_ml: [0; 8],
             anim_progress: 1.0,
+            day:today(),file_path:None,history:BTreeMap::new(),storage_blocked:false,storage_error:None,next_day_retry:None,
         }
+    }
+
+    pub fn from_file(path:PathBuf)->Self {Self::from_file_for_day(path,today())}
+
+    fn from_file_for_day(path:PathBuf,day:(u16,u16,u16))->Self {
+        let mut section=Self::in_memory();section.day=day;section.file_path=Some(path.clone());
+        match crate::storage::load_json::<WaterData>(&path) {
+            Ok(Some(data)) if data.version==1 && valid_day(data.day) && data.goal_ml>0=>section.apply_data(data),
+            Ok(None)=>{},
+            _=>{
+                section.storage_blocked=true;
+                section.storage_error=Some("Could not read water history. The original file has been preserved.".into());
+            },
+        }
+        section.reset_for_day(day);
+        section
+    }
+
+    fn snapshot(&self)->WaterData {
+        WaterData{version:1,day:self.day,intake_ml:self.intake_ml,goal_ml:self.goal_ml,reminder_on:self.reminder_on,
+            hourly_ml:self.hourly_ml,history:self.history.clone()}
+    }
+    fn apply_data(&mut self,data:WaterData) {
+        self.day=data.day;self.intake_ml=data.intake_ml;self.goal_ml=data.goal_ml;self.reminder_on=data.reminder_on;
+        self.hourly_ml=data.hourly_ml;self.history=data.history;self.storage_error=None;self.next_day_retry=None;
+    }
+    fn commit(&mut self,data:WaterData)->bool {
+        if self.storage_blocked {return false;}
+        if let Some(path)=&self.file_path {
+            if crate::storage::save_json(path,&data).is_err() {
+                self.storage_error=Some("Not saved. Check data folder permissions and try again.".into());
+                return false;
+            }
+        }
+        self.apply_data(data);true
+    }
+
+    pub fn reset_if_new_day(&mut self) -> bool {
+        if self.next_day_retry.is_some_and(|retry|std::time::Instant::now()<retry) {return false;}
+        self.reset_for_day(today())
+    }
+
+    fn reset_for_day(&mut self, day: (u16, u16, u16)) -> bool {
+        if self.day == day { return false; }
+        if !valid_day(day) {return false;}
+        let mut data=self.snapshot();
+        data.history.insert(date_key(self.day),WaterDay{intake_ml:self.intake_ml,hourly_ml:self.hourly_ml});
+        let next=data.history.get(&date_key(day)).cloned().unwrap_or_default();
+        data.day=day;data.intake_ml=next.intake_ml;data.hourly_ml=next.hourly_ml;
+        if self.commit(data) {true}else{self.next_day_retry=Some(std::time::Instant::now()+std::time::Duration::from_secs(5));false}
     }
 
     pub fn trigger_grow_anim(&mut self) {
@@ -32,8 +222,11 @@ impl WaterSection {
         }
     }
 
-    pub fn drink(&mut self, amount_ml: u32) {
-        self.intake_ml = (self.intake_ml + amount_ml).min(self.goal_ml * 2);
+    pub fn drink(&mut self, amount_ml: u32)->bool {
+        self.reset_if_new_day();
+        if self.day!=today() {return false;}
+        let mut data=self.snapshot();
+        data.intake_ml=data.intake_ml.saturating_add(amount_ml);
         // Add to current hour slot (or last slot)
         let hour = unsafe { windows::Win32::System::SystemInformation::GetLocalTime().wHour };
         let idx = if hour >= 9 && hour <= 16 {
@@ -41,19 +234,18 @@ impl WaterSection {
         } else {
             7
         };
-        self.hourly_ml[idx] = (self.hourly_ml[idx] + amount_ml).min(400);
+        data.hourly_ml[idx]=data.hourly_ml[idx].saturating_add(amount_ml);
+        self.commit(data)
     }
 
-    pub fn cycle_settings(&mut self) {
-        if self.goal_ml == 1500 {
-            self.goal_ml = 2000;
-        } else if self.goal_ml == 2000 {
-            self.goal_ml = 2500;
-        } else {
-            self.goal_ml = 1500;
-            self.intake_ml = 0;
-            self.hourly_ml = [0; 8];
-        }
+    pub fn cycle_settings(&mut self)->bool {
+        let mut data=self.snapshot();
+        data.goal_ml=match self.goal_ml {1500=>2000,2000=>2500,_=>1500};
+        self.commit(data)
+    }
+
+    pub fn toggle_reminder(&mut self)->bool {
+        let mut data=self.snapshot();data.reminder_on=!self.reminder_on;self.commit(data)
     }
 
     pub fn draw(

@@ -18,80 +18,257 @@ pub struct TodoItem {
 pub struct TodoSection {
     pub items: Vec<TodoItem>,
     pub file_path: PathBuf,
+    pub storage_error: Option<String>,
+    read_failed: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TodoEditing { New, Existing(usize) }
+
+pub const PAGE_SIZE: usize = 3;
+pub const EXPANDED_SIZE: (f32, f32) = (520.0, 232.0);
+
+pub fn page_start(offset: usize, count: usize) -> usize {
+    (offset / PAGE_SIZE).min(count.saturating_sub(1) / PAGE_SIZE) * PAGE_SIZE
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static SERIAL: AtomicUsize = AtomicUsize::new(0);
+    fn fixture() -> TodoSection {
+        let dir=std::env::temp_dir().join(format!("nocan-todo-{}-{}",std::process::id(),SERIAL.fetch_add(1,Ordering::Relaxed)));
+        std::fs::create_dir_all(&dir).unwrap();
+        TodoSection::from_file(dir.join("todo.json"))
+    }
+    fn clean(s:TodoSection) { std::fs::remove_dir_all(s.file_path.parent().unwrap()).unwrap(); }
+
+    #[test]
+    fn create_edit_complete_delete_and_restore_survive_reload() {
+        let mut s=fixture();
+        let first=s.add_task("  Pelajari 日本語 💧  ").unwrap();
+        let second=s.add_task("Tugas kedua").unwrap();
+        s.toggle_task(first).unwrap();
+        s.edit_task(first,"Judul diperbarui").unwrap();
+        assert!(s.items[1].completed);
+        let removed=s.delete_task(first).unwrap();
+        assert_eq!(s.items[0].id,second);
+        s.restore_task(removed.0,removed.1).unwrap();
+        let s=TodoSection::from_file(s.file_path.clone());
+        assert_eq!(s.items.len(),2);
+        assert_eq!(s.items[1].id,first);
+        assert_eq!(s.items[1].title,"Judul diperbarui");
+        assert!(s.items[1].completed);
+        clean(s);
+    }
+    #[test]
+    fn validation_and_failed_storage_keep_previous_items() {
+        let mut s=fixture();
+        assert!(s.add_task(" \n ").is_err());
+        assert!(s.add_task(&"水".repeat(161)).is_err());
+        let id=s.add_task(&"水".repeat(160)).unwrap();
+        assert!(s.edit_task(id," ").is_err());
+        assert_eq!(s.items[0].title.chars().count(),160);
+        let real_path=s.file_path.clone();
+        let blocker=s.file_path.parent().unwrap().join("blocker");
+        std::fs::write(&blocker,b"keep").unwrap();
+        s.file_path=blocker.join("todo.json");
+        assert!(s.add_task("Gagal").is_err());
+        assert!(s.delete_task(id).is_err());
+        assert!(s.toggle_task(id).is_err());
+        assert!(s.edit_task(id,"Gagal").is_err());
+        assert_eq!(s.items.len(),1); assert!(!s.items[0].completed);
+        assert_eq!(s.items[0].title.chars().count(),160);
+        s.file_path=real_path;clean(s);
+    }
+
+    #[test]
+    fn missing_todo_file_is_not_created_or_saved_as_empty_during_load() {
+        let mut s=fixture();
+        assert!(!s.file_path.exists());
+        assert!(s.storage_error.is_none());
+        s.items.push(TodoItem { id:42,title:"In memory".into(),completed:false });
+        s.load();
+        assert_eq!(s.items[0].id,42);
+        assert!(!s.file_path.exists());
+        clean(s);
+    }
+
+    #[test]
+    fn corrupt_todo_without_backup_preserves_bytes_and_in_memory_tasks() {
+        let mut s=fixture();
+        let id=s.add_task("Tetap tersimpan").unwrap();
+        let corrupt=b"[{\"id\":1,\"title\":\"unfinished";
+        std::fs::write(&s.file_path,corrupt).unwrap();
+        s.load();
+        assert_eq!(s.items[0].title,"Tetap tersimpan");
+        assert!(s.storage_error.is_some());
+        let loaded=TodoSection::from_file(s.file_path.clone());
+        assert!(loaded.items.is_empty());
+        assert!(loaded.storage_error.is_some());
+        assert!(s.add_task("Tidak boleh menimpa").is_err());
+        assert!(s.edit_task(id,"Tidak boleh menimpa").is_err());
+        assert!(s.delete_task(id).is_err());
+        s.toggle_item(id);s.add_quick_task();s.save();
+        assert_eq!(s.items.len(),1);
+        assert!(!s.items[0].completed);
+        assert_eq!(std::fs::read(&s.file_path).unwrap(),corrupt);
+        clean(s);
+    }
+
+    #[test]
+    fn valid_backup_recovers_tasks_after_update_and_allows_safe_new_changes() {
+        let mut s=fixture();
+        let id=s.add_task("Catatan 💧").unwrap();
+        s.toggle_task(id).unwrap();
+        s.edit_task(id,"Judul versi terbaru").unwrap();
+        let backup=crate::storage::backup_path(&s.file_path);
+        let backup_bytes=std::fs::read(&backup).unwrap();
+        std::fs::write(&s.file_path,b"broken").unwrap();
+        let mut reopened=TodoSection::from_file(s.file_path.clone());
+        assert_eq!(reopened.items[0].title,"Catatan 💧");
+        assert!(reopened.items[0].completed);
+        assert_eq!(std::fs::read(&s.file_path).unwrap(),b"broken");
+        reopened.add_task("Sesudah pemulihan").unwrap();
+        assert_eq!(std::fs::read(&backup).unwrap(),backup_bytes);
+        let reopened=TodoSection::from_file(s.file_path.clone());
+        assert_eq!(reopened.items.len(),2);
+        assert!(reopened.items[1].completed);
+        clean(s);
+    }
+    #[test]
+    fn repairing_a_file_cannot_be_overwritten_by_an_unloaded_empty_list() {
+        let s=fixture();let path=s.file_path.clone();
+        std::fs::write(&path,"{broken").unwrap();
+        let mut unloaded=TodoSection::from_file(path.clone());
+        let repaired=br#"[{"id":7,"title":"Recovered note","completed":true}]"#;
+        std::fs::write(&path,repaired).unwrap();
+        assert!(unloaded.add_task("New note").is_err());unloaded.save();
+        assert_eq!(std::fs::read(&path).unwrap(),repaired);
+        unloaded.load();assert_eq!(unloaded.items.len(),1);
+        assert!(unloaded.add_task("New note").is_ok());assert_eq!(unloaded.items.len(),2);
+        clean(s);
+    }
+
+    #[test]
+    fn failed_backup_write_does_not_change_tasks_or_existing_file() {
+        let mut s=fixture();let id=s.add_task("Tetap utuh").unwrap();
+        let original=std::fs::read(&s.file_path).unwrap();
+        std::fs::create_dir(crate::storage::backup_path(&s.file_path)).unwrap();
+        assert!(s.delete_task(id).is_err());
+        assert!(s.storage_error.is_some());
+        s.toggle_item(id);s.add_quick_task();
+        assert_eq!(s.items.len(),1);assert!(!s.items[0].completed);
+        assert_eq!(std::fs::read(&s.file_path).unwrap(),original);
+        clean(s);
+    }
+    #[test]
+    fn last_page_clamps_after_deletion() {
+        assert_eq!(page_start(99,0),0);
+        assert_eq!(page_start(3,4),3);
+        assert_eq!(page_start(3,3),0);
+        assert_eq!(page_start(9,7),6);
+    }
 }
 
 impl TodoSection {
     pub fn new() -> Self {
-        let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| "C:\\".to_string());
-        let mut p = PathBuf::from(&local_appdata);
-        p.push("Nocan");
-        let _ = std::fs::create_dir_all(&p);
-        p.push("todo.json");
+        Self::from_file(crate::storage::data_dir().join("todo.json"))
+    }
 
+    pub fn from_file(file_path: PathBuf) -> Self {
         let mut section = Self {
             items: Vec::new(),
-            file_path: p,
+            file_path,
+            storage_error: None,
+            read_failed: false,
         };
         section.load();
         section
     }
 
     pub fn load(&mut self) {
-        if self.file_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&self.file_path) {
-                if let Ok(parsed) = serde_json::from_str::<Vec<TodoItem>>(&content) {
-                    if !parsed.is_empty() {
-                        self.items = parsed;
-                        return;
-                    }
-                }
-            }
+        match crate::storage::load_json::<Vec<TodoItem>>(&self.file_path) {
+            Ok(Some(items)) => { self.items = items; self.storage_error = None; self.read_failed=false; }
+            Ok(None) => { self.storage_error = None; self.read_failed=false; }
+            Err(error) => { self.storage_error = Some(error); self.read_failed=true; }
         }
-
-        self.items = vec![
-            TodoItem {
-                id: 1,
-                title: "Revise the report".to_string(),
-                completed: true,
-            },
-            TodoItem {
-                id: 2,
-                title: "Reply to Dina".to_string(),
-                completed: true,
-            },
-            TodoItem {
-                id: 3,
-                title: "Post weekly update".to_string(),
-                completed: true,
-            },
-        ];
-        self.save();
     }
 
     pub fn save(&self) {
-        if let Ok(serialized) = serde_json::to_string_pretty(&self.items) {
-            let _ = std::fs::write(&self.file_path, serialized);
+        if self.read_failed {return;}
+        if let Err(error) = crate::storage::save_json(&self.file_path, &self.items) {
+            eprintln!("{}", error);
         }
+    }
+
+    fn commit(&mut self, items: Vec<TodoItem>) -> Result<(), String> {
+        if self.read_failed {return Err("Notes could not be loaded. Reopen the app after restoring the file.".into());}
+        if let Err(error) = crate::storage::save_json(&self.file_path, &items) {
+            self.storage_error = Some(error.clone());
+            return Err(error);
+        }
+        self.items = items;
+        self.storage_error = None;
+        Ok(())
+    }
+
+    fn checked_title(title: &str) -> Result<String, String> {
+        let title = title.trim();
+        if title.is_empty() { return Err("Task title cannot be empty.".into()); }
+        if title.chars().count() > 160 { return Err("Task title must be 160 characters or fewer.".into()); }
+        Ok(title.to_string())
+    }
+
+    pub fn add_task(&mut self, title: &str) -> Result<usize, String> {
+        let title = Self::checked_title(title)?;
+        let id = self.items.iter().map(|i| i.id).max().unwrap_or(0).checked_add(1)
+            .ok_or_else(|| "Could not create a new task.".to_string())?;
+        let mut items = self.items.clone();
+        items.insert(0, TodoItem { id, title, completed: false });
+        self.commit(items)?;
+        Ok(id)
+    }
+
+    pub fn edit_task(&mut self, id: usize, title: &str) -> Result<(), String> {
+        let title = Self::checked_title(title)?;
+        let mut items = self.items.clone();
+        let item = items.iter_mut().find(|i| i.id == id).ok_or_else(|| "Task not found.".to_string())?;
+        item.title = title;
+        self.commit(items)
+    }
+
+    pub fn delete_task(&mut self, id: usize) -> Result<(TodoItem, usize), String> {
+        let mut items = self.items.clone();
+        let index = items.iter().position(|i| i.id == id).ok_or_else(|| "Task not found.".to_string())?;
+        let removed = items.remove(index);
+        self.commit(items)?;
+        Ok((removed, index))
+    }
+
+    pub fn restore_task(&mut self, item: TodoItem, index: usize) -> Result<(), String> {
+        if self.items.iter().any(|i| i.id == item.id) { return Err("Task already exists.".into()); }
+        let mut items = self.items.clone();
+        items.insert(index.min(items.len()), item);
+        self.commit(items)
+    }
+
+    pub fn toggle_task(&mut self, id: usize) -> Result<(), String> {
+        let mut items = self.items.clone();
+        let item = items.iter_mut().find(|i| i.id == id).ok_or_else(|| "Task not found.".to_string())?;
+        item.completed = !item.completed;
+        self.commit(items)
     }
 
     pub fn toggle_item(&mut self, id: usize) {
-        if let Some(item) = self.items.iter_mut().find(|i| i.id == id) {
-            item.completed = !item.completed;
-            self.save();
-        }
+        let _ = self.toggle_task(id);
     }
 
     pub fn add_quick_task(&mut self) {
-        let next_id = self.items.iter().map(|i| i.id).max().unwrap_or(0) + 1;
-        self.items.insert(
-            0,
-            TodoItem {
-                id: next_id,
-                title: format!("New task #{}", next_id),
-                completed: false,
-            },
-        );
-        self.save();
+        if let Some(next_id) = self.items.iter().map(|i| i.id).max().unwrap_or(0).checked_add(1) {
+            let _ = self.add_task(&format!("New task #{}", next_id));
+        }
     }
 
     pub fn open_todo_file(&self) {

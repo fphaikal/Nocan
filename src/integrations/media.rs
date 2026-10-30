@@ -153,31 +153,10 @@ fn poll_current_media(
         .map(|s| s.to_string())
         .unwrap_or_default();
 
-    let key = format!("{}|{}", title, artist);
+    let key = format!("{}|{}|{}|{}", source_app, title, artist, album);
     if !title.is_empty() {
-        if key != *cached_key {
-            *cached_key = key;
-            *thumb_retry_count = 0;
-            *cached_thumb = decode_thumbnail_62x62(&media_props).ok().map(Arc::new);
-        } else if cached_thumb.is_none() {
-            *thumb_retry_count += 1;
-            // Persistent retry cadence:
-            // - Ticks 1..12 (first 3s): retry every 250ms tick
-            // - Ticks 13..40 (3s to 10s): retry every 4 ticks (1s)
-            // - Ticks > 40: retry every 20 ticks (5s)
-            let should_retry = if *thumb_retry_count <= 12 {
-                true
-            } else if *thumb_retry_count <= 40 {
-                *thumb_retry_count % 4 == 0
-            } else {
-                *thumb_retry_count % 20 == 0
-            };
-            if should_retry {
-                if let Ok(bytes) = decode_thumbnail_62x62(&media_props) {
-                    *cached_thumb = Some(Arc::new(bytes));
-                }
-            }
-        }
+        refresh_thumbnail(&key, cached_key, cached_thumb, thumb_retry_count,
+            || decode_thumbnail_62x62(&media_props).ok());
     } else {
         cached_key.clear();
         *cached_thumb = None;
@@ -220,6 +199,61 @@ fn poll_current_media(
         artwork_url: None,
         thumbnail_bgra: cached_thumb.clone(),
     })
+}
+
+fn refresh_thumbnail<F>(key: &str, cached_key: &mut String,
+    cached_thumb: &mut Option<Arc<Vec<u8>>>, ticks: &mut u32, decode: F)
+where F: FnOnce() -> Option<Vec<u8>> {
+    let changed = key != cached_key;
+    if changed {
+        *cached_key = key.to_owned();
+        *cached_thumb = None;
+        *ticks = 0;
+    } else {
+        *ticks = ticks.saturating_add(1);
+    }
+
+    // Some players initially publish an app icon and replace it with artwork later.
+    let refresh = changed || if cached_thumb.is_none() && *ticks <= 12 {
+        true
+    } else if *ticks <= 80 {
+        *ticks % 4 == 0
+    } else {
+        *ticks % 20 == 0
+    };
+    if refresh {
+        if let Some(bytes) = decode() {
+            if cached_thumb.as_ref().map_or(true, |current| current.as_ref() != &bytes) {
+                *cached_thumb = Some(Arc::new(bytes));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod thumbnail_tests {
+    use super::*;
+
+    #[test]
+    fn replaces_late_artwork_and_keeps_last_image_on_failure() {
+        let (mut key, mut image, mut ticks) = (String::new(), None, 0);
+        refresh_thumbnail("song", &mut key, &mut image, &mut ticks, || Some(vec![1]));
+        let original = image.as_ref().unwrap().clone();
+        for _ in 0..3 {
+            refresh_thumbnail("song", &mut key, &mut image, &mut ticks, || panic!("too early"));
+        }
+        refresh_thumbnail("song", &mut key, &mut image, &mut ticks, || None);
+        assert!(Arc::ptr_eq(image.as_ref().unwrap(), &original));
+        for _ in 0..3 {
+            refresh_thumbnail("song", &mut key, &mut image, &mut ticks, || panic!("too early"));
+        }
+        refresh_thumbnail("song", &mut key, &mut image, &mut ticks, || Some(vec![2]));
+        assert_eq!(image.as_ref().unwrap().as_ref(), &vec![2]);
+        refresh_thumbnail("next", &mut key, &mut image, &mut ticks, || None);
+        assert!(image.is_none());
+        refresh_thumbnail("next", &mut key, &mut image, &mut ticks, || Some(vec![3]));
+        assert_eq!(image.as_ref().unwrap().as_ref(), &vec![3]);
+    }
 }
 
 fn decode_thumbnail_62x62(

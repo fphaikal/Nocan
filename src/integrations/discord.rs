@@ -22,7 +22,7 @@ impl Default for DiscordConfig {
             api_url: "http://localhost:3000/api/activity/now-playing".to_string(),
             api_key: "".to_string(),
             discord_enabled: true,
-            discord_client_id: "463151177836658699".to_string(),
+            discord_client_id: String::new(),
             sync_interval_seconds: 3,
         }
     }
@@ -68,11 +68,8 @@ impl DiscordRpcService {
             return;
         }
 
-        if !self.config.discord_enabled {
-            return;
-        }
-
         let client_id = self.config.discord_client_id.clone();
+        let configured_enabled = self.config.discord_enabled;
         let running = Arc::clone(&self.running);
 
         std::thread::spawn(move || {
@@ -82,15 +79,22 @@ impl DiscordRpcService {
             let _ = std::fs::write(log_dir.join("nocan_discord.log"), "Discord service thread started\n");
             let mut ipc = DiscordIpc::new(client_id);
             let mut last_track = String::new();
+            let mut preference_enabled = crate::config::AppSettings::load().music.discord_rpc_enabled;
 
             while running.load(Ordering::SeqCst) {
                 let track = media_service.get_info();
-                let current_sig = format!("{}:{}:{}", track.title, track.artist, track.is_playing);
+                if let Ok(content) = std::fs::read_to_string(log_dir.join("settings.json")) {
+                    if let Ok(settings) = serde_json::from_str::<crate::config::AppSettings>(&content) {
+                        preference_enabled = settings.music.discord_rpc_enabled;
+                    }
+                }
+                let enabled = configured_enabled && preference_enabled;
+                let current_sig = format!("{}:{}:{}:{}", track.title, track.artist, track.is_playing, enabled);
 
                 if current_sig != last_track {
                     last_track = current_sig;
 
-                    if track.is_playing && !track.title.is_empty() {
+                    if enabled && track.is_playing && !track.title.is_empty() {
                         let art_url = get_artwork_url(&track.title, &track.artist, &track.source_app);
                         ipc.set_activity(
                             Some(&track.title),
@@ -127,6 +131,9 @@ impl DiscordIpc {
     }
 
     fn ensure_connected(&mut self) -> bool {
+        if self.client_id.is_empty() || !self.client_id.bytes().all(|c| c.is_ascii_digit()) {
+            return false;
+        }
         if self.pipe.is_some() {
             return true;
         }
@@ -201,10 +208,7 @@ impl DiscordIpc {
                     "small_image": small_icon,
                     "small_text": small_name
                 },
-                "timestamps": timestamps,
-                "buttons": [
-                    { "label": "Portfolio", "url": "https://fph.my.id" }
-                ]
+                "timestamps": timestamps
             }))
         } else {
             None

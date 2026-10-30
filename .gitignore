@@ -1,1 +1,17 @@
 /target
+
+# Local environments and generated review artifacts
+.vs/
+.idea/
+*.raw
+*.log
+*.pdb
+/anti-slop/
+/assets/mascot/previews/
+
+# Local credentials and profiles
+.env
+.env.*
+!.env.example
+/data/
+/test-profile/

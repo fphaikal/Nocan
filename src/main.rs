@@ -14,15 +14,53 @@ pub mod integrations;
 pub mod notch;
 pub mod sections;
 pub mod settings;
+pub mod storage;
 
 use integrations::discord::DiscordRpcService;
 use integrations::media::MediaService;
 use notch::window::NotchWindow;
 
 fn main() -> Result<()> {
-    let base = std::env::var("LOCALAPPDATA")
-        .unwrap_or_else(|_| "C:\\Users\\abufa\\AppData\\Local".to_string());
-    let log_dir = std::path::PathBuf::from(base).join("Nocan");
+    if std::env::var_os("NOCAN_DATA_DIR").is_none() && std::env::args().any(|arg|arg.starts_with("--preview-") || arg.starts_with("--dump-")) {
+        std::env::set_var("NOCAN_DATA_DIR",std::env::temp_dir().join(format!("nocan-preview-{}",std::process::id())));
+    }
+    if std::env::args().any(|arg|arg=="--inspect-openmaus") {
+        let directory=integrations::openmaus::get_openmaus_data_dir();
+        let mut monitor=integrations::openmaus_activity::ActivityMonitor::new(directory.clone());
+        let poll=monitor.poll();
+        let report=integrations::openmaus::load_usage_report_from(&directory);
+        println!("source_found={} server_online={} events={} schedules={} agents_running={} automations_running={} startup_notifications={} error={:?}",
+            poll.snapshot.source_found,poll.snapshot.server_online,poll.snapshot.events.len(),poll.snapshot.routines.len(),
+            poll.snapshot.running_agents,poll.snapshot.running_automations,poll.notifications.len(),poll.snapshot.sync_error);
+        println!("usage_turns={} today_turns={} bots={} models={} providers={}",report.total_turns,report.today_turns,report.bots.len(),report.models.len(),report.providers.len());
+        return Ok(());
+    }
+    if std::env::args().any(|arg| arg == "--preview-focus" || arg == "--preview-todo") {
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?; }
+        NotchWindow::create(MediaService::new())?;
+        notch::window::run_message_loop();
+        return Ok(());
+    }
+    if std::env::args().any(|arg| arg == "--preview-settings") {
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?; }
+        settings::SettingsWindow::show_or_create(HWND::default())?;
+        notch::window::run_message_loop();
+        return Ok(());
+    }
+
+    if std::env::args().any(|arg| arg == "--dump-settings-preview") {
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?; }
+        let dir = std::env::args().nth(2).unwrap_or_else(|| "target/settings-preview".to_string());
+        settings::ui::dump_settings_previews(std::path::Path::new(&dir))?;
+        println!("Dumped settings previews to {}", dir);
+        return Ok(());
+    }
+    if std::env::args().any(|arg| arg == "--preview-branding") {
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?; }
+        NotchWindow::create(MediaService::new())?;
+        return Ok(());
+    }
+    let log_dir = storage::data_dir();
     let _ = std::fs::create_dir_all(&log_dir);
 
     let panic_log_path = log_dir.join("nocan_panic.log");
@@ -53,6 +91,12 @@ fn main() -> Result<()> {
         }
     }
     log("Single instance acquired");
+    if settings::autostart::enabled() {
+        // Versioned executable names must not leave Windows launching an older build.
+        if settings::autostart::set(true).is_err() {
+            log("Could not refresh the existing startup entry for this build");
+        }
+    }
 
     // 2. Initialize COM
     unsafe {

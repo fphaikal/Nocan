@@ -47,6 +47,7 @@ impl Carousel {
     }
 
     pub fn set_active_sections(&mut self, sections: Vec<SectionId>) {
+        if self.active_sections == sections { return; }
         if sections.is_empty() {
             self.active_sections = vec![SectionId::Music];
         } else {
@@ -113,14 +114,20 @@ impl Carousel {
     }
 
     pub fn next(&mut self) {
-        if self.current_section + 1 < self.total_sections() {
-            self.set_section(self.current_section + 1);
+        if self.total_sections() > 0 {
+            let next_idx = (self.current_section + 1) % self.total_sections();
+            self.set_section(next_idx);
         }
     }
 
     pub fn prev(&mut self) {
-        if self.current_section > 0 {
-            self.set_section(self.current_section - 1);
+        if self.total_sections() > 0 {
+            let prev_idx = if self.current_section == 0 {
+                self.total_sections() - 1
+            } else {
+                self.current_section - 1
+            };
+            self.set_section(prev_idx);
         }
     }
 

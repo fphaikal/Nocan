@@ -18,7 +18,7 @@ impl CompositionTarget {
             DCompositionCreateDevice(dxgi_device)?
         };
 
-        let target = unsafe { device.CreateTargetForHwnd(hwnd, true)? };
+        let target = unsafe { device.CreateTargetForHwnd(hwnd, false)? };
         let visual = unsafe { device.CreateVisual()? };
 
         unsafe {

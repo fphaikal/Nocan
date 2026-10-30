@@ -14,6 +14,8 @@ pub struct AiUsageSection {
     pub service: AiUsageService,
     pub active_tab: AiTab,
     pub summary: AiUsageSummary,
+    pub enabled: [bool; 4],
+    pub show_proportional_bar: bool,
 }
 
 impl AiUsageSection {
@@ -24,6 +26,8 @@ impl AiUsageSection {
             service,
             active_tab: AiTab::Antigravity,
             summary,
+            enabled: [true; 4],
+            show_proportional_bar: false,
         }
     }
 

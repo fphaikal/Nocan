@@ -15,6 +15,7 @@ pub struct UsageItem {
     pub total_tokens: u64,
     pub prompt_bytes: u64,
     pub cost_usd: f64,
+    pub cost_reported: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -24,6 +25,7 @@ pub struct UsageReport {
     pub total_input: u64,
     pub total_output: u64,
     pub total_cost_usd: f64,
+    pub cost_reported: bool,
     pub today_turns: u64,
     pub today_tokens: u64,
     pub bots: Vec<UsageItem>,
@@ -80,6 +82,7 @@ struct RawBot {
 }
 
 pub fn get_openmaus_data_dir() -> PathBuf {
+    if let Some(directory)=std::env::var_os("NOCAN_OPENMAUS_DIR").filter(|value|!value.is_empty()) {return PathBuf::from(directory);}
     let home = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\abufa".to_string());
     let mut p = PathBuf::from(home);
     p.push(".openmausbot");
@@ -120,6 +123,10 @@ fn resolve_provider_name(
 
 pub fn load_usage_report() -> UsageReport {
     let data_dir = get_openmaus_data_dir();
+    load_usage_report_from(&data_dir)
+}
+
+pub fn load_usage_report_from(data_dir: &std::path::Path) -> UsageReport {
     let usage_dir = data_dir.join("usage");
 
     // Load configs
@@ -138,8 +145,16 @@ pub fn load_usage_report() -> UsageReport {
     let mut bot_names: HashMap<String, String> = HashMap::new();
     let bots_path = data_dir.join("bots.json");
     if let Ok(content) = std::fs::read_to_string(&bots_path) {
-        if let Ok(parsed) = serde_json::from_str::<HashMap<String, RawBot>>(&content) {
-            for (_, b) in parsed {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
+            let parsed:Vec<RawBot> = match value {
+                serde_json::Value::Array(rows) => rows.into_iter().filter_map(|row|serde_json::from_value(row).ok()).collect(),
+                serde_json::Value::Object(rows) => rows.into_iter().filter_map(|(key,mut row)| {
+                    if row.get("id").is_none() { row.as_object_mut()?.insert("id".into(),key.into()); }
+                    serde_json::from_value(row).ok()
+                }).collect(),
+                _=>Vec::new(),
+            };
+            for b in parsed {
                 if let Some(id) = b.id {
                     if let Some(n) = b.name {
                         bot_names.insert(id.clone(), n);
@@ -185,6 +200,7 @@ pub fn load_usage_report() -> UsageReport {
                         let inp = row.input.unwrap_or(0);
                         let outp = row.output.unwrap_or(0);
                         let cost = row.cost_usd.unwrap_or(0.0);
+                        let cost_reported=row.cost_usd.is_some_and(|cost|cost.is_finite() && cost>=0.0);
                         let tot = inp + outp;
 
                         let pb = if let Some(bytes) = row.prompt_bytes {
@@ -198,12 +214,10 @@ pub fn load_usage_report() -> UsageReport {
                         report.total_output += outp;
                         report.total_tokens += tot;
                         report.total_cost_usd += cost;
+                        report.cost_reported |= cost_reported;
 
-                        let is_today = if let Some(ref at_str) = row.at {
-                            at_str.starts_with(&today_prefix)
-                        } else {
-                            false
-                        };
+                        let is_today = row.at.as_ref().and_then(|at|super::openmaus_activity::parse_timestamp(&serde_json::Value::String(at.clone())))
+                            .map_or(false,|at|super::openmaus_activity::local_date(at)==today_prefix);
 
                         if is_today {
                             report.today_turns += 1;
@@ -236,6 +250,7 @@ pub fn load_usage_report() -> UsageReport {
                         b_item.total_tokens += tot;
                         b_item.prompt_bytes += pb;
                         b_item.cost_usd += cost;
+                        b_item.cost_reported |= cost_reported;
 
                         // Aggregate by Model
                         let m_name = row.model.clone().unwrap_or_else(|| "Unknown Model".to_string());
@@ -249,6 +264,7 @@ pub fn load_usage_report() -> UsageReport {
                         m_item.total_tokens += tot;
                         m_item.prompt_bytes += pb;
                         m_item.cost_usd += cost;
+                        m_item.cost_reported |= cost_reported;
 
                         // Aggregate by Provider
                         let p_name = resolve_provider_name(
@@ -266,6 +282,7 @@ pub fn load_usage_report() -> UsageReport {
                         p_item.total_tokens += tot;
                         p_item.prompt_bytes += pb;
                         p_item.cost_usd += cost;
+                        p_item.cost_reported |= cost_reported;
                     }
                 }
             }
@@ -298,6 +315,35 @@ fn get_today_date_prefix() -> String {
 fn get_now_time_string() -> String {
     unsafe {
         let st = GetLocalTime();
-        format!("{:02}:{:02}:{:02} WIB", st.wHour, st.wMinute, st.wSecond)
+        format!("{:02}:{:02}:{:02} UTC+07", st.wHour, st.wMinute, st.wSecond)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize,Ordering};
+    static SERIAL:AtomicUsize=AtomicUsize::new(0);
+    #[test]
+    fn bot_array_and_legacy_map_resolve_real_names_and_usage() {
+        let dir=std::env::temp_dir().join(format!("nocan-maus-usage-{}-{}",std::process::id(),SERIAL.fetch_add(1,Ordering::Relaxed)));
+        std::fs::create_dir_all(dir.join("usage")).unwrap();
+        std::fs::write(dir.join("config.json"),r#"{"instances":{"local":{"displayName":"Provider lokal"}}}"#).unwrap();
+        std::fs::write(dir.join("bots.json"),r#"[{"id":"bot-a","name":"Asisten","title":"Peneliti"}]"#).unwrap();
+        let row=r#"{"botId":"bot-a","model":"model-a","instanceId":"local","input":120,"output":30,"costUsd":0.02,"at":"2026-10-30T00:00:00Z"}"#;
+        std::fs::write(dir.join("usage/log.jsonl"),format!("{row}\n{{partial")).unwrap();
+        let report=load_usage_report_from(&dir);
+        assert_eq!(report.total_turns,1);assert_eq!(report.total_tokens,150);
+        assert_eq!(report.bots[0].name,"Asisten");assert_eq!(report.bots[0].subtext,"Peneliti");
+        assert_eq!(report.providers[0].name,"Provider lokal");
+        assert!((report.total_cost_usd-0.02).abs()<0.0001);
+        assert!(report.cost_reported);
+        assert!(report.bots[0].cost_reported);
+        std::fs::write(dir.join("usage/log.jsonl"),row.replace("0.02","null")).unwrap();
+        let unpriced=load_usage_report_from(&dir);
+        assert!(!unpriced.cost_reported);assert!(!unpriced.models[0].cost_reported);
+        std::fs::write(dir.join("bots.json"),r#"{"bot-a":{"name":"Nama lama"}}"#).unwrap();
+        assert_eq!(load_usage_report_from(&dir).bots[0].name,"Nama lama");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

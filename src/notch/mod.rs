@@ -1,4 +1,9 @@
 pub mod carousel;
+pub mod compact;
+pub mod focus_capsule;
+pub mod hydration;
 pub mod dots;
+pub mod mascot;
 pub mod nav;
 pub mod window;
+pub mod todo_editor;
