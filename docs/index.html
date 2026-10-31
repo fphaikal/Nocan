@@ -33,7 +33,7 @@
     <script defer src="assets/vendor/ScrollTrigger.min.js"></script>
     <script defer src="assets/lyrics-timeline.js?v=lyrics-api-2"></script>
     <script defer src="assets/notch-preview.js?v=preview-alignment-1"></script>
-    <script defer src="assets/site.js?v=preview-alignment-1"></script>
+    <script defer src="assets/site.js?v=release-download-1"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -132,7 +132,10 @@
           >
             <svg class="icon"><use href="#i-motion" /></svg
             ><span>Motion on</span></button
-          ><a class="nav-get" href="#get-nocan"
+          ><a
+            class="nav-get"
+            data-release-download
+            href="https://github.com/fphaikal/Nocan/releases/latest/download/Nocan-Setup.exe"
             >Get Nocan <svg class="icon"><use href="#i-arrow" /></svg
           ></a>
         </div>
@@ -153,7 +156,10 @@
           close, in a space that feels right at home.
         </p>
         <div class="hero-actions">
-          <a class="button button-primary" href="#get-nocan"
+          <a
+            class="button button-primary"
+            data-release-download
+            href="https://github.com/fphaikal/Nocan/releases/latest/download/Nocan-Setup.exe"
             ><svg class="icon"><use href="#i-windows" /></svg> Get Nocan for
             Windows</a
           ><a
@@ -596,22 +602,20 @@
           <a
             class="button button-primary"
             id="release-link"
-            href="https://github.com/fphaikal/Nocan#build-and-run"
-            target="_blank"
-            rel="noopener"
+            data-release-download
+            href="https://github.com/fphaikal/Nocan/releases/latest/download/Nocan-Setup.exe"
             ><svg class="icon"><use href="#i-windows" /></svg
-            ><span>Build for Windows</span></a
+            ><span>Download for Windows</span></a
           ><a
             class="button button-text"
-            href="https://github.com/fphaikal/Nocan/blob/master/README.md#build-and-run"
+            href="https://github.com/fphaikal/Nocan/blob/master/README.md#install-from-github-releases"
             target="_blank"
             rel="noopener"
             >Installation guide <svg class="icon"><use href="#i-arrow" /></svg
           ></a>
         </div>
         <p class="release-note" id="release-note">
-          Build from source with Rust and the Windows build tools. Free under
-          the MIT license.
+          Windows installer · Free under the MIT license.
         </p>
         <div class="clone-command">
           <code>git clone https://github.com/fphaikal/Nocan.git</code

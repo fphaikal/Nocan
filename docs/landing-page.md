@@ -34,7 +34,7 @@ The page respects reduced-motion preferences and offers a persistent motion togg
 
 ## Releases and privacy
 
-The install button initially links to the source build instructions. The page checks GitHub's public releases API for a stable release with a Windows executable. When one is available, it uses the published download URL. Unavailable or rate-limited API responses leave the source build link functional.
+All download buttons link directly to the latest release's `Nocan-Setup.exe`, including before JavaScript runs. The page checks GitHub's public releases API for a stable release with a Windows executable, then updates every download button to that asset's published URL and displays the release version. Unavailable or rate-limited API responses leave the latest-release installer link functional. Keep the installer asset named `Nocan-Setup.exe` in future releases so this fallback remains valid.
 
 The site stores only its motion preference in browser storage. The optional clipboard action copies the public clone command. All visual assets and animation libraries are served with the page. External application requests are the GitHub release check and LRCLIB's public lyric lookup. The lyric lookup sends the example song's public metadata; local LRC contents are never sent. GitHub Pages and the external services have their own hosting behavior.
 

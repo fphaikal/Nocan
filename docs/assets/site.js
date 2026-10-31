@@ -1039,12 +1039,14 @@
         )
       )
         return;
-      $("#release-link").href = asset.browser_download_url;
+      $$("[data-release-download], #release-link").forEach((link) => {
+        link.href = asset.browser_download_url;
+      });
       $("#release-link span").textContent = "Download for Windows";
       $("#release-note").textContent =
         `${release.tag_name} · Free under the MIT license. Windows desktop required.`;
     } catch {
-      /* The source build remains available if GitHub is unavailable. */
+      /* Keep the latest-release installer link if the API is unavailable. */
     } finally {
       clearTimeout(timeout);
     }
