@@ -72,5 +72,58 @@
     return cues;
   }
 
-  window.NocanLyrics = { excerpt, duration, defaultCues, at, parse };
+  const normalize = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]/gu, "");
+
+  async function load(track, { signal, fetchImpl = fetch } = {}) {
+    const params = new URLSearchParams({
+      artist_name: track.artist,
+      track_name: track.title.replace(/’/g, "'"),
+      duration: String(track.duration),
+    });
+    const request = async (path) => {
+      const query = new URLSearchParams(params);
+      if (path === "search") query.delete("duration");
+      const response = await fetchImpl(
+        `https://lrclib.net/api/${path}?${query}`,
+        {
+          signal,
+          headers: { Accept: "application/json" },
+          credentials: "omit",
+          referrerPolicy: "no-referrer",
+        },
+      );
+      if (response.status === 404) return null;
+      if (!response.ok)
+        throw new Error(
+          "Lyrics service is unavailable. Try again in a moment.",
+        );
+      return response.json();
+    };
+    const matches = (item) =>
+      item &&
+      normalize(item.artistName) === normalize(track.artist) &&
+      normalize(item.trackName) === normalize(track.title) &&
+      Math.abs(Number(item.duration) - track.duration) <= 2 &&
+      typeof item.syncedLyrics === "string" &&
+      item.syncedLyrics.trim();
+    let record = await request("get");
+    if (!matches(record)) {
+      const results = await request("search");
+      record = Array.isArray(results) ? results.find(matches) : null;
+    }
+    if (!matches(record))
+      throw new Error(
+        "Time-synced lyrics are unavailable for this recording. Retry or load a local LRC.",
+      );
+    return {
+      cues: parse(record.syncedLyrics),
+      id: record.id,
+      source: "LRCLIB",
+    };
+  }
+
+  window.NocanLyrics = { excerpt, duration, defaultCues, at, parse, load };
 })();

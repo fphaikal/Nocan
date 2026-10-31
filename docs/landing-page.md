@@ -18,9 +18,11 @@ The timer chip uses the native 164 × 36 proportions and green-to-amber-to-red p
 
 GSAP morphs the notch silhouette between its measured bounds when opening, collapsing, or changing section. Content fades after the shape starts moving, and the lyric timer enters separately. Native concave corners attach to the screen edge. Preview scaling uses layout width rather than transformed bounds, so morph animations do not change the final scale.
 
-The music example is Bleachers' [Merry Christmas, Please Don't Call](https://music.apple.com/us/album/merry-christmas-please-dont-call/1775877095?i=1775877096), released in 2024, with a duration of 3:22. Metadata and the single artwork come from Apple's public catalog. The preview contains a short refrain only; no audio or complete lyrics are bundled.
+The music example is Bleachers' [Merry Christmas, Please Don't Call](https://music.apple.com/us/album/merry-christmas-please-dont-call/1775877095?i=1775877096), released in 2024, with a duration of 3:22. Metadata and the single artwork come from Apple's public catalog. The browser loads time-synced lyrics directly from LRCLIB using the same lookup strategy as the desktop integration. No audio or complete lyric text is bundled in the repository.
 
-`assets/lyrics-timeline.js` shares one playback clock across expanded lyrics, the compact lyric notch, the music progress bar, and the scroll narrative. The built-in excerpt uses line timestamps verified against [LRCLIB record 14809951](https://lrclib.net/api/get/14809951): 57.36–65.19, 117.18–124.95, and 160.15–164.44 seconds. The default silent preview loops the first excerpt. Seeking disables this loop, pause freezes playback, and Replay excerpt restores the default. Rows slide and fade when the active timestamp changes; they do not scroll continuously at an unrelated speed.
+`assets/lyrics-timeline.js` requests `/api/get` with artist, track title, and duration. If the exact lookup has no synced record, it makes one bounded `/api/search` request. Artist and title are normalized and the recording must match within two seconds. The request has an eight-second timeout and a retry control. Lyric responses remain in browser memory. A short local excerpt is available while the service is loading or unavailable.
+
+One playback clock drives expanded lyrics, the compact lyric notch, the music progress bar, and the scroll narrative. Rows slide and fade when the active timestamp changes. Pause freezes the clock, seeking selects the corresponding line, and Replay song starts the current loaded lyrics from the beginning. Playback stops at the end of the track. The silent demo initially opens near the refrain so the lyric behavior is immediately visible.
 
 The Music feature includes a local `.lrc` loader for full, user-supplied timed lyrics. It supports repeated timestamps, fractional seconds, offsets, and blank instrumental lines. Local text is escaped before rendering, is never uploaded, and remains in memory until reload. The compact lyric notch follows the native 32 px height, 13 px semibold type, left music note, 14 px bottom corners, 10 px concave ears, and text-measured width plus 62 px clamped to 190–560 px. Its low glow follows the example's red artwork. Blank lyric intervals restore the compact mascot or integrated timer; active lyrics separate the timer into its chip.
 
@@ -34,7 +36,7 @@ The page respects reduced-motion preferences and offers a persistent motion togg
 
 The install button initially links to the source build instructions. The page checks GitHub's public releases API for a stable release with a Windows executable. When one is available, it uses the published download URL. Unavailable or rate-limited API responses leave the source build link functional.
 
-The site stores only its motion preference in browser storage. The optional clipboard action copies the public clone command. All visual assets and animation libraries are served with the page. The release check is the only application-initiated external request; GitHub Pages itself has its own hosting behavior.
+The site stores only its motion preference in browser storage. The optional clipboard action copies the public clone command. All visual assets and animation libraries are served with the page. External application requests are the GitHub release check and LRCLIB's public lyric lookup. The lyric lookup sends the example song's public metadata; local LRC contents are never sent. GitHub Pages and the external services have their own hosting behavior.
 
 ## GitHub Pages and domain
 

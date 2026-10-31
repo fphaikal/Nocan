@@ -442,8 +442,7 @@
                   aria-label="Seek music preview"
                 />
                 <div>
-                  <button type="button" data-replay-excerpt>
-                    Replay excerpt</button
+                  <button type="button" data-replay-song>Replay song</button
                   ><label class="lrc-file-button"
                     >Load .lrc<input
                       type="file"
@@ -452,9 +451,11 @@
                   /></label>
                 </div>
                 <p class="lyrics-source-status" role="status">
-                  Timed excerpt · Load a local LRC for the full song. Files stay
-                  in your browser.
+                  Loading time-synced lyrics from LRCLIB…
                 </p>
+                <button type="button" data-retry-lyrics hidden>
+                  Retry lyrics
+                </button>
               </div>
               <div class="module-preview-tools">
                 <button type="button" data-final-minute>

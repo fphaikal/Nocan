@@ -29,7 +29,6 @@
     total: 1500,
     musicPosition: 57.36,
     lyricCues: NocanLyrics.defaultCues(),
-    loopExcerpt: true,
     lyrics: true,
     waterGoal: 2000,
     reminder: true,
@@ -46,6 +45,8 @@
   let lastTick = Date.now();
   let lastMusicTick = Date.now();
   let lastLyricIndex = -1;
+  let lyricsRequest = 0;
+  let lyricsAbort;
 
   try {
     const savedMotion = localStorage.getItem("nocan-site-motion");
@@ -647,19 +648,14 @@
   });
   $("#music-seek").addEventListener("input", (event) => {
     state.musicPosition = Number(event.target.value);
-    state.loopExcerpt = false;
     lastMusicTick = Date.now();
     syncMusic();
   });
-  $("[data-replay-excerpt]").addEventListener("click", () => {
-    state.lyricCues = NocanLyrics.defaultCues();
-    state.musicPosition = 56.36;
+  $("[data-replay-song]").addEventListener("click", () => {
+    state.musicPosition = 0;
     state.musicPlaying = true;
-    state.loopExcerpt = true;
     lastLyricIndex = -1;
     lastMusicTick = Date.now();
-    $(".lyrics-source-status").textContent =
-      "Timed excerpt · Load a local LRC for the full song. Files stay in your browser.";
     refreshPreviews();
     syncMusic(true);
   });
@@ -669,15 +665,20 @@
     try {
       if (file.size > 1024 * 1024)
         throw new Error("Choose an LRC file smaller than 1 MB.");
-      state.lyricCues = NocanLyrics.parse(await file.text());
+      const cues = NocanLyrics.parse(await file.text());
+      ++lyricsRequest;
+      lyricsAbort?.abort();
+      state.lyricCues = cues;
       state.musicPosition = state.lyricCues.find((cue) => cue.text).time;
-      state.loopExcerpt = false;
       state.musicPlaying = true;
       state.lyrics = true;
       lastLyricIndex = -1;
       lastMusicTick = Date.now();
       $(".lyrics-source-status").textContent =
         "Local LRC loaded. Lyrics follow playback, pause, and seeking. Nothing is uploaded.";
+      $(".lyrics-source-status").dataset.state = "ready";
+      $(".lyrics-source-status").dataset.source = "local";
+      $("[data-retry-lyrics]").hidden = true;
       refreshPreviews();
       syncMusic(true);
     } catch (error) {
@@ -832,7 +833,6 @@
     }
     const track = event.target.closest("[data-track]");
     if (track) {
-      state.loopExcerpt = false;
       state.musicPosition = Math.max(
         0,
         Math.min(
@@ -964,6 +964,42 @@
     }, 3500);
   });
 
+  async function loadSongLyrics() {
+    const request = ++lyricsRequest;
+    lyricsAbort?.abort();
+    const controller = new AbortController();
+    lyricsAbort = controller;
+    const status = $(".lyrics-source-status");
+    status.textContent = "Loading time-synced lyrics from LRCLIB…";
+    status.dataset.state = "loading";
+    status.dataset.source = "lrclib";
+    $("[data-retry-lyrics]").hidden = true;
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      const result = await NocanLyrics.load(NocanPreview.track, {
+        signal: controller.signal,
+      });
+      if (request !== lyricsRequest) return;
+      state.lyricCues = result.cues;
+      lastLyricIndex = -1;
+      status.textContent = "LRCLIB · Time-synced lyrics · Silent preview";
+      status.dataset.state = "ready";
+      refreshPreviews();
+      syncMusic(true);
+    } catch (error) {
+      if (request !== lyricsRequest) return;
+      status.textContent =
+        error.name === "AbortError"
+          ? "Lyrics took too long to load. Retry or load a local LRC."
+          : "Lyrics could not be loaded. Retry or load a local LRC.";
+      status.dataset.state = "error";
+      $("[data-retry-lyrics]").hidden = false;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  $("[data-retry-lyrics]").addEventListener("click", loadSongLyrics);
+
   async function findRelease() {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4500);
@@ -1005,6 +1041,7 @@
   renderModule("music", false);
   renderStory("focus");
   setMotion(motionOff);
+  loadSongLyrics();
   findRelease();
   setInterval(() => {
     const now = Date.now();
@@ -1018,9 +1055,7 @@
       const elapsed = (now - lastMusicTick) / 1000;
       if (elapsed > 0) {
         state.musicPosition += elapsed;
-        if (state.loopExcerpt && state.musicPosition >= 65.19)
-          state.musicPosition = 56.36 + ((state.musicPosition - 56.36) % 8.83);
-        else if (state.musicPosition >= NocanPreview.track.duration) {
+        if (state.musicPosition >= NocanPreview.track.duration) {
           state.musicPosition = NocanPreview.track.duration;
           state.musicPlaying = false;
           refreshPreviews();

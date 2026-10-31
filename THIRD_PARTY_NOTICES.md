@@ -24,7 +24,9 @@ The icons under `assets/logos`, and their website copies under `docs/assets/prov
 
 Lyrics, album artwork, media metadata, stock-market data, and externally hosted source icons are supplied by their respective services or applications. Their terms and rights remain separate from Nocan's source-code license.
 
-The website's `docs/assets/bleachers-merry-christmas.jpg` identifies Bleachers' single _Merry Christmas, Please Don't Call_ (℗ 2024 Dirty Hit). The artwork and metadata were obtained from the [Apple Music catalog](https://music.apple.com/us/album/merry-christmas-please-dont-call/1775877095?i=1775877096) for the requested music-interface example. Artwork and the short lyric excerpt retain their original rights and are not covered by the project's MIT license. No song audio or full lyrics are included.
+The website's `docs/assets/bleachers-merry-christmas.jpg` identifies Bleachers' single _Merry Christmas, Please Don't Call_ (℗ 2024 Dirty Hit). The artwork and metadata were obtained from the [Apple Music catalog](https://music.apple.com/us/album/merry-christmas-please-dont-call/1775877095?i=1775877096) for the requested music-interface example. Artwork and the short lyric excerpt retain their original rights and are not covered by the project's MIT license. No song audio or full lyrics are bundled in this repository.
+
+The browser preview requests time-synced lyrics from [LRCLIB](https://lrclib.net/docs) at runtime. That external content retains its original rights and is not licensed under this repository's MIT license. Responses are not committed to the repository or stored in browser persistence.
 
 `docs/assets/lake-wallpaper.jpg` is a reduced-resolution copy of [A view of a mountain lake surrounded by pine trees](https://unsplash.com/photos/a-view-of-a-mountain-lake-surrounded-by-pine-trees-WPSbXAoiOc0) by Sofia, used under the [Unsplash License](https://unsplash.com/license). The photo retains its original license and is not covered by the project's MIT license.
 
