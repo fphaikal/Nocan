@@ -651,7 +651,19 @@
     lastMusicTick = Date.now();
     syncMusic();
   });
-  $("[data-replay-song]").addEventListener("click", () => {
+  const replaySong = $("[data-replay-song], [data-replay-excerpt]");
+  replaySong.textContent = "Replay song";
+  replaySong.dataset.replaySong = "";
+  const retryLyrics =
+    $("[data-retry-lyrics]") || document.createElement("button");
+  if (!retryLyrics.parentElement) {
+    retryLyrics.type = "button";
+    retryLyrics.dataset.retryLyrics = "";
+    retryLyrics.textContent = "Retry lyrics";
+    retryLyrics.hidden = true;
+    $(".music-timeline-controls").append(retryLyrics);
+  }
+  replaySong.addEventListener("click", () => {
     state.musicPosition = 0;
     state.musicPlaying = true;
     lastLyricIndex = -1;
@@ -976,6 +988,8 @@
     $("[data-retry-lyrics]").hidden = true;
     const timeout = setTimeout(() => controller.abort(), 8000);
     try {
+      if (typeof NocanLyrics.load !== "function")
+        await import("./lyrics-timeline.js?v=lyrics-api-2");
       const result = await NocanLyrics.load(NocanPreview.track, {
         signal: controller.signal,
       });
