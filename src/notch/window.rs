@@ -746,7 +746,7 @@ impl NotchWindow {
             crate::config::debug_log("NotchWindow::create: calling update_window_rgn & ShowWindow");
             (*raw_ptr).update_window_rgn();
             let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-            windows::Win32::UI::WindowsAndMessaging::SetTimer(hwnd, 1, 10, None);
+            windows::Win32::UI::WindowsAndMessaging::SetTimer(hwnd, 1, 16, None);
         }
 
         crate::config::debug_log("NotchWindow::create: complete, returning Ok(hwnd)");
@@ -3317,7 +3317,7 @@ unsafe extern "system" fn wnd_proc(
                                 settings.save();
                             }
                             IDM_ABOUT => {
-                                let msg: Vec<u16> = "Nocan v1.1.0\nMusic, lyrics, focus timer, water reminder, to-do, file shelf & AI Usage Tracker (Antigravity, Claude, Codex).\nLyrics provided by LRCLIB (lrclib.net).\0".encode_utf16().collect();
+                                let msg: Vec<u16> = concat!("Nocan v", env!("CARGO_PKG_VERSION"), "\nMusic, lyrics, focus timer, water reminder, to-do, file shelf & AI Usage Tracker (Antigravity, Claude, Codex).\nLyrics provided by LRCLIB (lrclib.net).\0").encode_utf16().collect();
                                 let cap: Vec<u16> = "About Nocan\0".encode_utf16().collect();
                                 let _ = MessageBoxW(
                                     hwnd,

@@ -88,7 +88,7 @@ impl Default for AiUsageSettings {
             show_codex: true,
             show_opencode: true,
             default_provider: 0,
-            poll_interval_secs: 3,
+            poll_interval_secs: 30,
             show_proportional_bar: true,
         }
     }

@@ -64,14 +64,21 @@ impl MediaService {
             let media_log = log_dir.join("nocan_media.log");
 
             let _ = std::fs::write(&media_log, "Media service thread started\n");
+            let mut last_error_log: Option<std::time::Instant> = None;
             while running.load(Ordering::SeqCst) {
                 match poll_current_media(&mut cached_key, &mut cached_thumb, &mut thumb_retry_count) {
                     Ok(info) => {
+                        last_error_log = None;
                         if let Ok(mut lock) = current_track.lock() {
                             *lock = info;
                         }
                     }
                     Err(e) => {
+                        if last_error_log.is_some_and(|last| last.elapsed() < Duration::from_secs(60)) {
+                            std::thread::sleep(Duration::from_millis(250));
+                            continue;
+                        }
+                        last_error_log = Some(std::time::Instant::now());
                         let _ = std::fs::OpenOptions::new()
                             .create(true)
                             .append(true)

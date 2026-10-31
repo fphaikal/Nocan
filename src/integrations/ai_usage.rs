@@ -78,7 +78,7 @@ impl AiUsageService {
         let initial = Arc::new(RwLock::new(Self::fetch_all()));
         let data_clone = Arc::clone(&initial);
 
-        let poll_interval = Arc::new(AtomicU64::new(3));
+        let poll_interval = Arc::new(AtomicU64::new(30));
         let interval = Arc::clone(&poll_interval);
         let handle = thread::spawn(move || loop {
             thread::park_timeout(Duration::from_secs(interval.load(Ordering::Relaxed).clamp(1,60)));

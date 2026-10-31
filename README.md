@@ -108,6 +108,12 @@ No separate asset-copy step is required for normal use. The application embeds i
 
 ## Install, update, and uninstall
 
+### Install from GitHub Releases
+
+Download and run `Nocan-Setup.exe` from the project's GitHub Releases page. The installer installs Nocan for the current user, creates a Start menu shortcut and an optional desktop shortcut, and adds an entry in Windows installed apps. Run a newer installer to update; your settings and personal data are retained. The installer is not digitally signed.
+
+To build the installer from source on Windows, install Inno Setup, fetch the Rust dependencies, and run `./tools/build-installer.ps1 -InnoCompiler 'C:\path\to\ISCC.exe'`. The result is `target/Nocan-Setup.exe`.
+
 ### Run without installation
 
 Run the built executable directly. Nocan still stores its regular settings, tasks, and water history in the Windows user data directory, independently of the executable's location.
@@ -135,19 +141,19 @@ These helper scripts use Cargo's default `target` directory. Leave `CARGO_TARGET
 
 ### Update
 
-Exit Nocan, replace the executable, then start the new version. If you installed from source, rerun the install script instead. The data directory does not depend on the executable name or application version.
+Run the newer installer to update an installed copy. If you installed from source, rerun the install script instead. The data directory does not depend on the executable name or application version.
 
 If startup was already enabled, a normal launch refreshes the startup entry to point to the current executable. An existing disabled startup preference remains disabled.
 
 ### Uninstall
 
-Use the Windows uninstall entry or run:
+Use the Nocan entry in Windows installed apps. For an older installation made with the source-install script, you can also run:
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Nocan\uninstall-nocan.ps1"
 ```
 
-The script removes the installed executable, its matching shortcuts, and its matching startup entry. Settings and personal data remain available for a later reinstall.
+The uninstaller removes the installed executable, its shortcuts, and its matching startup entry. Settings and personal data remain available for a later reinstall. The script shown above applies to the older source-install workflow.
 
 ## Using Nocan
 
