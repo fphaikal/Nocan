@@ -568,7 +568,7 @@
             pinSpacing: false,
             anticipatePin: 1,
           });
-          gsap.to(".wallpaper", {
+          gsap.to(".desktop-screen", {
             yPercent: 8,
             ease: "none",
             scrollTrigger: {

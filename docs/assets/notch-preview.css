@@ -632,6 +632,12 @@ html[data-motion="on"] .native-song-title.is-playing {
 }
 
 .notch-demo.notch-demo {
+  --compact-row-height: 40px;
+  --timer-chip-height: min(36px, var(--compact-row-height));
+  --timer-chip-width: calc(var(--timer-chip-height) * 164 / 36);
+  --timer-chip-top: calc(
+    (var(--compact-row-height) - var(--timer-chip-height)) / 2
+  );
   --notch-width: 188px;
   width: var(--notch-width);
   min-height: 40px;
@@ -740,6 +746,7 @@ html[data-motion="on"] .native-song-title.is-playing {
   display: flex;
 }
 .notch-demo.notch-demo.has-lyrics:not(.is-open) {
+  --compact-row-height: 32px;
   --notch-width: min(var(--lyric-width, 270px), calc(100vw - 76px));
   min-height: 32px;
 }
@@ -749,25 +756,25 @@ html[data-motion="on"] .native-song-title.is-playing {
   text-overflow: ellipsis;
 }
 .notch-demo.notch-demo .floating-timer {
-  top: 2px;
+  top: var(--timer-chip-top);
   left: calc(100% + 12px);
-  width: 164px;
-  height: 36px;
+  width: var(--timer-chip-width);
+  height: var(--timer-chip-height);
   min-width: 0;
-  padding: 6px;
+  padding: calc(var(--timer-chip-height) / 6);
   gap: 0;
   border-radius: 18px;
-  font-size: 13px;
+  font-size: calc(var(--timer-chip-height) * 13 / 36);
   box-shadow: none;
 }
 .notch-demo .floating-timer > .timer-dot {
-  width: 16px;
-  height: 16px;
-  margin-left: 6px;
+  width: calc(var(--timer-chip-height) * 16 / 36);
+  height: calc(var(--timer-chip-height) * 16 / 36);
+  margin-left: calc(var(--timer-chip-height) / 6);
 }
 .notch-demo .floating-timer > button {
-  width: 24px;
-  height: 24px;
+  width: calc(var(--timer-chip-height) * 24 / 36);
+  height: calc(var(--timer-chip-height) * 24 / 36);
 }
 .notch-demo .floating-timer > [data-timer] {
   margin: 0 auto;
@@ -851,23 +858,30 @@ html[data-motion="on"] .native-song-title.is-playing {
   transform: scaleX(-1);
 }
 .native-scene-chip {
+  --timer-chip-height: 32px;
+  --timer-chip-width: calc(var(--timer-chip-height) * 164 / 36);
+  --timer-chip-top: 0px;
   position: absolute;
-  top: 2px;
+  top: var(--timer-chip-top);
   left: 262px;
-  width: 164px;
-  height: 36px;
+  width: var(--timer-chip-width);
+  height: var(--timer-chip-height);
   border-radius: 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
+  padding: calc(var(--timer-chip-height) / 6) calc(var(--timer-chip-height) / 3);
   background: #0f4d33;
-  font-size: 13px;
+  font-size: calc(var(--timer-chip-height) * 13 / 36);
   font-weight: 600;
 }
 .native-scene-chip .icon {
-  width: 12px;
-  height: 12px;
+  width: calc(var(--timer-chip-height) / 3);
+  height: calc(var(--timer-chip-height) / 3);
+}
+.native-scene-chip .timer-dot {
+  width: calc(var(--timer-chip-height) * 16 / 36);
+  height: calc(var(--timer-chip-height) * 16 / 36);
 }
 .story-chip.story-chip {
   display: none;
@@ -1021,12 +1035,14 @@ body:not([data-motion="off"]) .native-surface.is-drinking .native-hourly i {
     padding: 26px 15px;
   }
   .notch-demo.notch-demo.has-lyrics.has-detached-timer:not(.is-open) {
-    left: calc(50% - 75px);
+    left: calc(50% - (var(--timer-chip-width) + 8px) / 2);
     transform: translateX(-50%);
-    --notch-width: calc(100vw - 222px);
+    --notch-width: min(
+      var(--lyric-width, 270px),
+      calc(100% - var(--timer-chip-width) - 32px)
+    );
   }
   .notch-demo.notch-demo .floating-timer {
-    width: 142px;
     left: calc(100% + 8px);
   }
   .module-preview-tools button {

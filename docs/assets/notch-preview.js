@@ -241,13 +241,23 @@
     return `<div class="native-lyrics"><div class="native-lyrics-window"><div class="native-lyric-track" style="transform:translateY(${28 - current.index * 28}px)">${s.lyricCues.map((cue, index) => `<span class="native-lyric-row ${index === current.index ? "is-active" : ""}" data-cue-index="${index}">${escape(cue.text) || "···"}</span>`).join("")}</div></div></div>`;
   }
 
+  function timerChipSize(rowHeight) {
+    const height = Math.min(36, rowHeight);
+    return {
+      height,
+      width: Math.round((164 * height) / 36),
+      top: (rowHeight - height) / 2,
+    };
+  }
+
   function compactPreview(s) {
     const current = NocanLyrics.at(s.lyricCues, s.musicPosition);
     const width = current.text ? lyricWidth(current.text) : 188;
-    const height = current.text ? 38 : 40;
-    const total = width + (current.text ? 176 : 0);
+    const height = current.text ? 32 : 40;
+    const chip = timerChipSize(height);
+    const total = width + (current.text ? chip.width + 12 : 0);
     const body = current.text
-      ? `<span class="native-compact-lyrics" style="width:${width}px">${svg("music")}<span data-compact-line>${escape(current.text)}</span></span><span class="native-scene-chip" style="left:${width + 12}px"><span class="timer-dot"></span>24:59${svg("pause")}</span>`
+      ? `<span class="native-compact-lyrics" style="width:${width}px">${svg("music")}<span data-compact-line>${escape(current.text)}</span></span><span class="native-scene-chip" style="left:${width + 12}px;--timer-chip-height:${chip.height}px;--timer-chip-width:${chip.width}px;--timer-chip-top:${chip.top}px"><span class="timer-dot"></span>24:59${svg("pause")}</span>`
       : `<span class="native-story-integrated-timer"><span class="timer-dot"></span>24:59${svg("pause")}</span>`;
     return `<div class="native-viewport" style="--native-width:${total};--native-height:${height};aspect-ratio:${total}/${height}"><div class="native-surface native-lyric-scene" style="width:${total}px;height:${height}px">${body}</div></div>`;
   }
@@ -754,5 +764,6 @@
     track,
     lyricWidth,
     compactPreview,
+    timerChipSize,
   };
 })();
