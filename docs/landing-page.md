@@ -4,9 +4,9 @@ The landing page is a static website in `docs/index.html`, with styles and behav
 
 ## Design and interactions
 
-The page follows Nocan's light surfaces, neutral typography, blue accent, and tiger identity. The type uses the visitor's system fonts. The desktop illustration is drawn in SVG and CSS, while the Settings images are actual application renders.
+The page follows Nocan's light surfaces, neutral typography, blue accent, and tiger identity. The type uses the visitor's system fonts. The desktop preview contains only a landscape wallpaper that fades to transparency and the interactive notch; it has no taskbar, desktop labels, toolbar, or decorative notes. Settings images are actual application renders.
 
-The notch-shaped interface is the repeated visual motif. Its dark surface belongs to the product demonstration; the surrounding light page keeps text and controls readable. Blue highlights the main headline and active controls. The wallpaper's blue layers establish the Windows desktop setting rather than decorating unrelated content.
+The notch-shaped interface is the repeated visual motif. Its dark surface belongs to the product demonstration; the surrounding light page keeps text and controls readable. Blue highlights the main headline and active controls. The landscape photo establishes the desktop setting, and only the wallpaper is masked to transparency so the notch stays sharp.
 
 The layout varies between a centered introduction, a scroll narrative, an interactive module selector, an actual Settings screenshot, and source/install information. Motion introduces the notch, explains its timer/lyrics relationship, and confirms actions. The presentation uses moderate energy, varied composition, and purposeful animation (energy 2/5, rhythm 3/5, motion 3/5).
 
@@ -18,7 +18,11 @@ The timer chip uses the native 164 × 36 proportions and green-to-amber-to-red p
 
 GSAP morphs the notch silhouette between its measured bounds when opening, collapsing, or changing section. Content fades after the shape starts moving, and the lyric timer enters separately. Native concave corners attach to the screen edge. Preview scaling uses layout width rather than transformed bounds, so morph animations do not change the final scale.
 
-The music example is Bleachers' [Merry Christmas, Please Don't Call](https://music.apple.com/us/album/merry-christmas-please-dont-call/1775877095?i=1775877096), released in 2024, with a duration of 3:22. Metadata and the single artwork come from Apple's public catalog. The preview contains a short refrain only; no audio or complete lyrics are bundled. Playback controls move an illustrative progress clock.
+The music example is Bleachers' [Merry Christmas, Please Don't Call](https://music.apple.com/us/album/merry-christmas-please-dont-call/1775877095?i=1775877096), released in 2024, with a duration of 3:22. Metadata and the single artwork come from Apple's public catalog. The preview contains a short refrain only; no audio or complete lyrics are bundled.
+
+`assets/lyrics-timeline.js` shares one playback clock across expanded lyrics, the compact lyric notch, the music progress bar, and the scroll narrative. The built-in excerpt uses line timestamps verified against [LRCLIB record 14809951](https://lrclib.net/api/get/14809951): 57.36–65.19, 117.18–124.95, and 160.15–164.44 seconds. The default silent preview loops the first excerpt. Seeking disables this loop, pause freezes playback, and Replay excerpt restores the default. Rows slide and fade when the active timestamp changes; they do not scroll continuously at an unrelated speed.
+
+The Music feature includes a local `.lrc` loader for full, user-supplied timed lyrics. It supports repeated timestamps, fractional seconds, offsets, and blank instrumental lines. Local text is escaped before rendering, is never uploaded, and remains in memory until reload. The compact lyric notch follows the native 32 px height, 13 px semibold type, left music note, 14 px bottom corners, 10 px concave ears, and text-measured width plus 62 px clamped to 190–560 px. Its low glow follows the example's red artwork. Blank lyric intervals restore the compact mascot or integrated timer; active lyrics separate the timer into its chip.
 
 ScrollTrigger pins the desktop narrative, changes Focus/Music/Water scenes, and scrubs the progress track. Smaller screens keep the illustration sticky above the chapters while their triggers remain active. The motion toggle and operating-system reduced-motion preference remain respected. When verifying the page, restore the motion setting instead of leaving an interactive preview paused after a check.
 

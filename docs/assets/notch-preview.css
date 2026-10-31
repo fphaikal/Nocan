@@ -740,10 +740,11 @@ html[data-motion="on"] .native-song-title.is-playing {
   display: flex;
 }
 .notch-demo.notch-demo.has-lyrics:not(.is-open) {
-  --notch-width: min(270px, calc(100vw - 190px));
+  --notch-width: min(var(--lyric-width, 270px), calc(100vw - 76px));
+  min-height: 32px;
 }
 .notch-demo.notch-demo.has-lyrics:not(.is-open) .compact-lyric {
-  font-size: 10px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -846,7 +847,7 @@ html[data-motion="on"] .native-song-title.is-playing {
   transform: none;
 }
 .native-compact-lyrics::after {
-  left: 250px;
+  left: 100%;
   transform: scaleX(-1);
 }
 .native-scene-chip {
@@ -1019,7 +1020,7 @@ body:not([data-motion="off"]) .native-surface.is-drinking .native-hourly i {
   .module-panel.module-panel {
     padding: 26px 15px;
   }
-  .notch-demo.notch-demo.has-lyrics:not(.is-open) {
+  .notch-demo.notch-demo.has-lyrics.has-detached-timer:not(.is-open) {
     left: calc(50% - 75px);
     transform: translateX(-50%);
     --notch-width: calc(100vw - 222px);
@@ -1029,6 +1030,204 @@ body:not([data-motion="off"]) .native-surface.is-drinking .native-hourly i {
     left: calc(100% + 8px);
   }
   .module-preview-tools button {
+    min-height: 44px;
+  }
+}
+
+.desktop-demo.desktop-demo {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.desktop-screen.desktop-screen {
+  height: 460px;
+  overflow: visible;
+  border-radius: 0;
+  background: transparent;
+}
+.wallpaper.wallpaper {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 62%;
+  opacity: 0.78;
+  mask-image: linear-gradient(
+    to bottom,
+    #0009 0%,
+    #000 12%,
+    #000b 56%,
+    transparent 100%
+  );
+}
+.notch-demo.notch-demo {
+  box-shadow: none;
+}
+.notch-demo.notch-demo.has-lyrics:not(.is-open) .notch-face {
+  height: 32px;
+}
+.notch-demo.notch-demo.has-lyrics:not(.is-open) .compact-lyric {
+  height: 32px;
+  padding: 0 16px 0 34px;
+  font:
+    600 13px "SF Pro Text",
+    "SF Pro",
+    "Segoe UI Variable Text",
+    "Segoe UI",
+    sans-serif;
+}
+.compact-lyric,
+.story-notch .native-compact-lyrics {
+  background:
+    linear-gradient(to top, #8b1723ed 0%, #4b0b12b0 30%, #0000 90%), #000;
+}
+.compact-lyric > .icon,
+.native-compact-lyrics > .icon {
+  position: absolute;
+  left: 12px;
+  top: 9px;
+  width: 14px;
+  height: 14px;
+}
+.compact-lyric > [data-compact-line],
+.native-compact-lyrics > [data-compact-line] {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.story-notch .native-compact-lyrics {
+  position: relative;
+  width: auto;
+  height: 32px;
+  padding: 0 16px 0 34px;
+  font:
+    600 13px "SF Pro Text",
+    "SF Pro",
+    "Segoe UI Variable Text",
+    "Segoe UI",
+    sans-serif;
+}
+.native-story-integrated-timer {
+  display: flex;
+  width: 188px;
+  height: 40px;
+  padding: 0 18px;
+  align-items: center;
+  justify-content: space-between;
+  background: #0f4d33;
+  border-radius: 0 0 14px 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.native-lyrics-window {
+  position: relative;
+  width: 100%;
+  height: 84px;
+  overflow: hidden;
+  mask-image: linear-gradient(transparent, #000 10%, #000 90%, transparent);
+}
+.native-lyric-track {
+  position: absolute;
+  inset: 0 0 auto;
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.native-lyric-row {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  font-size: 12.5px;
+  color: #a3abb8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    color 0.28s,
+    font-weight 0.28s;
+}
+.native-lyric-row.is-active {
+  color: #f7faff;
+  font-size: 15px;
+  font-weight: 600;
+}
+.water-confirmation.water-confirmation {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.music-timeline-controls {
+  margin-bottom: 24px;
+  font-size: 12px;
+  color: #454b55;
+}
+.music-timeline-controls[hidden] {
+  display: none;
+}
+.music-timeline-controls > label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.music-timeline-controls output {
+  font-variant-numeric: tabular-nums;
+}
+.music-timeline-controls input[type="range"] {
+  width: 100%;
+  height: 36px;
+  accent-color: #2559db;
+  cursor: pointer;
+}
+.music-timeline-controls > div {
+  display: flex;
+  gap: 8px;
+}
+.music-timeline-controls button,
+.lrc-file-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid #c8ccd3;
+  border-radius: 7px;
+  color: #454b55;
+  background: #faf9f6;
+  font: inherit;
+  cursor: pointer;
+}
+.lrc-file-button input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.lrc-file-button:focus-within {
+  outline: 2px solid #2559db;
+  outline-offset: 3px;
+}
+.music-timeline-controls .lyrics-source-status {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #62646d;
+}
+@media (max-width: 600px) {
+  .desktop-screen.desktop-screen {
+    height: 340px;
+  }
+  .music-timeline-controls button,
+  .lrc-file-button,
+  .music-timeline-controls input[type="range"] {
     min-height: 44px;
   }
 }

@@ -28,6 +28,7 @@
     <link rel="stylesheet" href="assets/notch-preview.css" />
     <script defer src="assets/vendor/gsap.min.js"></script>
     <script defer src="assets/vendor/ScrollTrigger.min.js"></script>
+    <script defer src="assets/lyrics-timeline.js"></script>
     <script defer src="assets/notch-preview.js"></script>
     <script defer src="assets/site.js"></script>
   </head>
@@ -162,41 +163,15 @@
         </div>
         <div class="desktop-demo" id="desktop-demo">
           <div class="desktop-screen">
-            <svg
+            <img
               class="wallpaper"
-              viewBox="0 0 1200 600"
-              preserveAspectRatio="xMidYMid slice"
-              aria-hidden="true"
-            >
-              <defs>
-                <linearGradient id="sky" x2="0" y2="1">
-                  <stop stop-color="#ecf0f7" />
-                  <stop offset="1" stop-color="#adc5e6" />
-                </linearGradient>
-                <linearGradient id="hill" x2="0" y2="1">
-                  <stop stop-color="#e3eaf4" />
-                  <stop offset="1" stop-color="#c4d5eb" />
-                </linearGradient>
-              </defs>
-              <path fill="url(#sky)" d="M0 0h1200v600H0z" />
-              <path
-                fill="#9cb6db"
-                d="M0 550C130 485 260 100 590 147S1020 520 1200 285v315H0Z"
-              />
-              <path
-                fill="#bed0e9"
-                d="M0 510c265 60 300-230 550-180s350 230 650 100v170H0Z"
-              />
-              <path
-                fill="url(#hill)"
-                d="M0 600V430c200 190 260-70 440-20S770 690 1200 460v140Z"
-              />
-            </svg>
-            <div class="desktop-menubar" aria-hidden="true">
-              <span>Nocan <span>Desktop preview</span></span
-              ><span class="desktop-date">Friday, 9:41 AM</span>
-            </div>
-            <div class="notch-demo" data-demo-mode="focus">
+              src="assets/lake-wallpaper.jpg"
+              alt=""
+              width="1600"
+              height="2400"
+              fetchpriority="high"
+            />
+            <div class="notch-demo" data-demo-mode="music">
               <button
                 class="notch-face"
                 type="button"
@@ -206,8 +181,10 @@
               >
                 <span class="native-mascot" aria-hidden="true"></span>
                 <span class="compact-lyric" hidden
-                  >Merry Christmas, please don’t call</span
-                >
+                  ><svg class="icon" aria-hidden="true">
+                    <use href="#i-music" /></svg
+                  ><span data-compact-line></span
+                ></span>
                 <span class="compact-timer" hidden
                   ><span class="timer-dot"></span><span data-timer>25:00</span
                   ><svg class="icon"><use href="#i-focus" /></svg
@@ -231,76 +208,8 @@
                 </button>
               </div>
             </div>
-            <div class="desktop-note" aria-hidden="true">
-              <span>A quieter kind<br />of productive.</span
-              ><svg viewBox="0 0 120 55">
-                <path
-                  d="M3 30c16-24 40-27 48-3S80 55 115 6"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                />
-                <path
-                  d="m102 5 14-1-1 14"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                />
-              </svg>
-            </div>
-            <div class="desktop-taskbar" aria-hidden="true">
-              <svg class="icon"><use href="#i-windows" /></svg><span></span
-              ><svg class="icon"><use href="#i-files" /></svg
-              ><svg class="icon"><use href="#i-music" /></svg
-              ><img src="assets/nocan.png" width="27" height="27" alt="" />
-            </div>
             <div class="water-confirmation" role="status"></div>
           </div>
-          <div class="demo-toolbar">
-            <span
-              ><span class="live-dot"></span> Interactive browser preview</span
-            >
-            <div
-              class="demo-switcher"
-              role="group"
-              aria-label="Try a notch section"
-            >
-              <button type="button" data-hero-mode="focus" aria-pressed="true">
-                <svg class="icon"><use href="#i-focus" /></svg> Focus</button
-              ><button
-                type="button"
-                data-hero-mode="music"
-                aria-pressed="false"
-              >
-                <svg class="icon"><use href="#i-music" /></svg> Music</button
-              ><button
-                type="button"
-                data-hero-mode="water"
-                aria-pressed="false"
-              >
-                <svg class="icon"><use href="#i-water" /></svg> Water
-              </button>
-            </div>
-            <span class="demo-hint">Go on, give it a click.</span>
-          </div>
-          <a
-            class="music-preview-credit"
-            href="https://music.apple.com/us/album/merry-christmas-please-dont-call/1775877095?i=1775877096"
-            target="_blank"
-            rel="noreferrer"
-            hidden
-            ><img
-              src="assets/bleachers-merry-christmas.jpg"
-              alt="Merry Christmas, Please Don’t Call single artwork"
-              width="40"
-              height="40"
-            /><span
-              ><strong>Merry Christmas, Please Don’t Call</strong
-              ><small
-                >Bleachers · Single · 2024 · 3:22 · Preview without audio</small
-              ></span
-            ></a
-          >
         </div>
         <div class="hero-footnote">
           <span>Built for Windows</span><span>Written in Rust</span
@@ -518,6 +427,35 @@
               aria-label="Interactive feature preview"
             ></div>
             <div class="module-description">
+              <div class="music-timeline-controls" hidden>
+                <label for="music-seek"
+                  >Playback position
+                  <output data-music-position>00:57 / 03:22</output></label
+                >
+                <input
+                  id="music-seek"
+                  type="range"
+                  min="0"
+                  max="202"
+                  step="0.01"
+                  value="57.36"
+                  aria-label="Seek music preview"
+                />
+                <div>
+                  <button type="button" data-replay-excerpt>
+                    Replay excerpt</button
+                  ><label class="lrc-file-button"
+                    >Load .lrc<input
+                      type="file"
+                      accept=".lrc,text/plain"
+                      data-lrc-file
+                  /></label>
+                </div>
+                <p class="lyrics-source-status" role="status">
+                  Timed excerpt · Load a local LRC for the full song. Files stay
+                  in your browser.
+                </p>
+              </div>
               <div class="module-preview-tools">
                 <button type="button" data-final-minute>
                   Try final minute

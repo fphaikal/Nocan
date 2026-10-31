@@ -10,8 +10,8 @@
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
   const state = {
-    mode: "focus",
-    module: "focus",
+    mode: "music",
+    module: "music",
     remaining: 1500,
     running: false,
     started: false,
@@ -27,7 +27,9 @@
     taskPage: 0,
     focusMode: 0,
     total: 1500,
-    musicPosition: 84,
+    musicPosition: 57.36,
+    lyricCues: NocanLyrics.defaultCues(),
+    loopExcerpt: true,
     lyrics: true,
     waterGoal: 2000,
     reminder: true,
@@ -43,6 +45,7 @@
   let toastTimeout;
   let lastTick = Date.now();
   let lastMusicTick = Date.now();
+  let lastLyricIndex = -1;
 
   try {
     const savedMotion = localStorage.getItem("nocan-site-motion");
@@ -119,7 +122,8 @@
   };
 
   function formatTime(seconds) {
-    return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+    const whole = Math.max(0, Math.floor(seconds));
+    return `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}`;
   }
 
   function timerColor() {
@@ -155,11 +159,13 @@
         `${state.running ? "Pause" : "Start"} focus timer preview`,
       );
     });
-    const detached =
+    const currentLyric = NocanLyrics.at(state.lyricCues, state.musicPosition);
+    const hasLyric =
       state.mode === "music" &&
       state.musicPlaying &&
       state.lyrics &&
-      state.started;
+      Boolean(currentLyric.text);
+    const detached = hasLyric && state.started;
     $(".floating-timer").hidden = !detached || state.open;
     $(".floating-timer").style.backgroundColor = timerColor();
     $(".compact-timer").style.backgroundColor = timerColor();
@@ -167,9 +173,17 @@
       (element) => (element.style.backgroundColor = timerColor()),
     );
     $(".compact-timer").hidden = !state.started || state.open || detached;
-    $(".native-mascot").hidden = state.started || detached;
-    $(".compact-lyric").hidden = !detached || state.open;
-    $(".notch-demo").classList.toggle("has-lyrics", detached && !state.open);
+    $(".native-mascot").hidden = state.started || hasLyric;
+    $(".compact-lyric").hidden = !hasLyric || state.open;
+    $(".notch-demo").classList.toggle("has-lyrics", hasLyric && !state.open);
+    $(".notch-demo").classList.toggle(
+      "has-detached-timer",
+      detached && !state.open,
+    );
+    $(".notch-demo").style.setProperty(
+      "--lyric-width",
+      `${NocanPreview.lyricWidth(currentLyric.text)}px`,
+    );
     $$(
       ".hero-panel-content .native-timer, .explorer-preview .native-timer",
     ).forEach((element) => (element.textContent = formatTime(state.remaining)));
@@ -205,6 +219,59 @@
                   ? "Ready to focus"
                   : "Ready for a break"),
     );
+  }
+
+  function syncMusic(force = false) {
+    const current = NocanLyrics.at(state.lyricCues, state.musicPosition);
+    $$(".native-music-elapsed").forEach(
+      (element) => (element.textContent = formatTime(state.musicPosition)),
+    );
+    $$("[data-music-progress]").forEach(
+      (element) =>
+        (element.style.width = `${(state.musicPosition / NocanPreview.track.duration) * 100}%`),
+    );
+    $$("[data-music-position]").forEach(
+      (element) =>
+        (element.textContent = `${formatTime(state.musicPosition)} / 03:22`),
+    );
+    const seek = $("#music-seek");
+    if (document.activeElement !== seek) seek.value = state.musicPosition;
+    seek.setAttribute(
+      "aria-valuetext",
+      `${formatTime(state.musicPosition)} of 03:22`,
+    );
+    $$(".native-lyric-track").forEach(
+      (element) =>
+        (element.style.transform = `translateY(${28 - current.index * 28}px)`),
+    );
+    $$("[data-cue-index]").forEach((element) =>
+      element.classList.toggle(
+        "is-active",
+        Number(element.dataset.cueIndex) === current.index,
+      ),
+    );
+    $$("[data-compact-line]").forEach(
+      (element) => (element.textContent = current.text),
+    );
+    if (force || current.index !== lastLyricIndex) {
+      const before = captureNotch($(".notch-demo"));
+      lastLyricIndex = current.index;
+      updateTimer();
+      morphNotch($(".notch-demo"), before);
+      if (state.scene === "music") renderStory("music");
+      if (window.gsap && !motionOff && current.text)
+        gsap.fromTo(
+          $$("[data-compact-line]"),
+          { y: 6, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.28,
+            ease: "power2.out",
+            overwrite: true,
+          },
+        );
+    }
   }
 
   function notchFrame(host) {
@@ -291,7 +358,7 @@
       ),
     );
     updateTimer();
-    $(".music-preview-credit").hidden = state.mode !== "music";
+    syncMusic();
     morphNotch(host, before, changed);
   }
 
@@ -326,11 +393,13 @@
     NocanPreview.fit();
     $(".module-kicker").textContent = data.kicker;
     $(".module-description h3").textContent = data.heading;
-    $(".module-description p").textContent = data.description;
+    $(".module-description > p").textContent = data.description;
     $(".module-preview-tools").hidden = module !== "focus";
     $(".module-music-credit").hidden = module !== "music";
+    $(".music-timeline-controls").hidden = module !== "music";
     morphNotch($(".explorer-preview"), before, animate);
     updateTimer();
+    syncMusic();
   }
 
   function renderStory(scene) {
@@ -342,7 +411,7 @@
     $(".flow-stage").dataset.scene = scene;
     panel.innerHTML =
       scene === "music"
-        ? `<div class="native-viewport" style="--native-width:426;--native-height:40;aspect-ratio:426/40"><div class="native-surface native-lyric-scene" style="width:426px;height:40px"><span class="native-compact-lyrics"><span>${NocanPreview.track.lyric}</span></span><span class="native-scene-chip"><span class="timer-dot"></span>24:59${icon("pause")}</span></div></div>`
+        ? NocanPreview.compactPreview(state)
         : NocanPreview.render(scene, state, { illustrative: true });
     NocanPreview.fit();
     const index = ["focus", "music", "water"].indexOf(scene);
@@ -360,7 +429,7 @@
         : "Illustrative preview of the desktop experience.";
     if (window.gsap && !motionOff) {
       morphNotch(panel, before, true);
-      if (scene === "music")
+      if (scene === "music" && $(".native-scene-chip"))
         gsap.fromTo(
           $(".native-scene-chip"),
           { x: -26, opacity: 0 },
@@ -576,6 +645,46 @@
   systemTheme.addEventListener("change", () => {
     if (state.theme === "system") setTheme("system");
   });
+  $("#music-seek").addEventListener("input", (event) => {
+    state.musicPosition = Number(event.target.value);
+    state.loopExcerpt = false;
+    lastMusicTick = Date.now();
+    syncMusic();
+  });
+  $("[data-replay-excerpt]").addEventListener("click", () => {
+    state.lyricCues = NocanLyrics.defaultCues();
+    state.musicPosition = 56.36;
+    state.musicPlaying = true;
+    state.loopExcerpt = true;
+    lastLyricIndex = -1;
+    lastMusicTick = Date.now();
+    $(".lyrics-source-status").textContent =
+      "Timed excerpt · Load a local LRC for the full song. Files stay in your browser.";
+    refreshPreviews();
+    syncMusic(true);
+  });
+  $("[data-lrc-file]").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      if (file.size > 1024 * 1024)
+        throw new Error("Choose an LRC file smaller than 1 MB.");
+      state.lyricCues = NocanLyrics.parse(await file.text());
+      state.musicPosition = state.lyricCues.find((cue) => cue.text).time;
+      state.loopExcerpt = false;
+      state.musicPlaying = true;
+      state.lyrics = true;
+      lastLyricIndex = -1;
+      lastMusicTick = Date.now();
+      $(".lyrics-source-status").textContent =
+        "Local LRC loaded. Lyrics follow playback, pause, and seeking. Nothing is uploaded.";
+      refreshPreviews();
+      syncMusic(true);
+    } catch (error) {
+      $(".lyrics-source-status").textContent = error.message;
+    }
+    event.target.value = "";
+  });
   reducedMotion.addEventListener("change", () => {
     let saved = null;
     try {
@@ -723,6 +832,7 @@
     }
     const track = event.target.closest("[data-track]");
     if (track) {
+      state.loopExcerpt = false;
       state.musicPosition = Math.max(
         0,
         Math.min(
@@ -892,7 +1002,7 @@
 
   $(".native-mascot").innerHTML = NocanPreview.mascot();
   renderHero();
-  renderModule("focus", false);
+  renderModule("music", false);
   renderStory("focus");
   setMotion(motionOff);
   findRelease();
@@ -901,20 +1011,22 @@
     if (
       state.musicPlaying &&
       !document.hidden &&
-      (state.mode === "music" || state.module === "music")
+      (state.mode === "music" ||
+        state.module === "music" ||
+        state.scene === "music")
     ) {
-      const elapsed = Math.floor((now - lastMusicTick) / 1000);
-      if (elapsed >= 1) {
-        state.musicPosition =
-          (state.musicPosition + elapsed) % NocanPreview.track.duration;
-        lastMusicTick += elapsed * 1000;
-        $$(".native-music-elapsed").forEach(
-          (element) => (element.textContent = formatTime(state.musicPosition)),
-        );
-        $$("[data-music-progress]").forEach(
-          (element) =>
-            (element.style.width = `${(state.musicPosition / NocanPreview.track.duration) * 100}%`),
-        );
+      const elapsed = (now - lastMusicTick) / 1000;
+      if (elapsed > 0) {
+        state.musicPosition += elapsed;
+        if (state.loopExcerpt && state.musicPosition >= 65.19)
+          state.musicPosition = 56.36 + ((state.musicPosition - 56.36) % 8.83);
+        else if (state.musicPosition >= NocanPreview.track.duration) {
+          state.musicPosition = NocanPreview.track.duration;
+          state.musicPlaying = false;
+          refreshPreviews();
+        }
+        lastMusicTick = now;
+        syncMusic();
       }
     } else lastMusicTick = now;
     if (state.running && !document.hidden) {

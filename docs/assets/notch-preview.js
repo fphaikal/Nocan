@@ -74,8 +74,10 @@
     illustrative = false,
   ) =>
     `<${illustrative ? "span" : 'button type="button"'} class="native-button ${cls}" style="${box(x, y, w, h)}" ${illustrative ? "" : attrs}>${text}</${illustrative ? "span" : "button"}>`;
-  const time = (seconds) =>
-    `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const time = (seconds) => {
+    const whole = Math.max(0, Math.floor(seconds));
+    return `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}`;
+  };
 
   function header(module, width, illustrative, hero, state) {
     const index = sections.indexOf(module);
@@ -220,15 +222,41 @@
     album: "Merry Christmas, Please Don’t Call - Single",
     year: 2024,
     duration: 202,
-    lyric: "Merry Christmas, please don’t call",
+    lyric: NocanLyrics.excerpt,
     artwork: "assets/bleachers-merry-christmas.jpg",
   };
+
+  let measureContext;
+  function lyricWidth(text) {
+    measureContext ||= document.createElement("canvas").getContext("2d");
+    measureContext.font =
+      '600 13px "SF Pro Text", "SF Pro", "Segoe UI Variable Text", "Segoe UI", sans-serif';
+    return Math.ceil(
+      Math.max(190, Math.min(560, measureContext.measureText(text).width + 62)),
+    );
+  }
+
+  function lyricsMarkup(s) {
+    const current = NocanLyrics.at(s.lyricCues, s.musicPosition);
+    return `<div class="native-lyrics"><div class="native-lyrics-window"><div class="native-lyric-track" style="transform:translateY(${28 - current.index * 28}px)">${s.lyricCues.map((cue, index) => `<span class="native-lyric-row ${index === current.index ? "is-active" : ""}" data-cue-index="${index}">${escape(cue.text) || "···"}</span>`).join("")}</div></div></div>`;
+  }
+
+  function compactPreview(s) {
+    const current = NocanLyrics.at(s.lyricCues, s.musicPosition);
+    const width = current.text ? lyricWidth(current.text) : 188;
+    const height = current.text ? 38 : 40;
+    const total = width + (current.text ? 176 : 0);
+    const body = current.text
+      ? `<span class="native-compact-lyrics" style="width:${width}px">${svg("music")}<span data-compact-line>${escape(current.text)}</span></span><span class="native-scene-chip" style="left:${width + 12}px"><span class="timer-dot"></span>24:59${svg("pause")}</span>`
+      : `<span class="native-story-integrated-timer"><span class="timer-dot"></span>24:59${svg("pause")}</span>`;
+    return `<div class="native-viewport" style="--native-width:${total};--native-height:${height};aspect-ratio:${total}/${height}"><div class="native-surface native-lyric-scene" style="width:${total}px;height:${height}px">${body}</div></div>`;
+  }
 
   function music(s, illustrative) {
     const lyric = s.lyrics;
     const x = lyric ? 96 : 120,
       right = lyric ? 220 : 424,
-      position = illustrative ? 84 : s.musicPosition;
+      position = s.musicPosition;
     return (
       `<div class="native-album" style="${box(24, 44, lyric ? 56 : 80, lyric ? 56 : 80)}"><img src="${track.artwork}" alt="Merry Christmas, Please Don’t Call single artwork" width="80" height="80"/></div>` +
       label(
@@ -297,9 +325,7 @@
         "",
         illustrative,
       ) +
-      (lyric
-        ? `<div class="native-lyrics">${label("···", 0, 0, 280, 28, "native-muted")}${label(track.lyric, 0, 28, 280, 28, "native-lyric-active")}${label("···", 0, 56, 280, 28, "native-muted")}${label("Short lyric preview · no audio", 0, 94, 280, 18, "native-small native-muted")}</div>`
-        : "")
+      (lyric ? lyricsMarkup(s) : "")
     );
   }
 
@@ -721,5 +747,12 @@
     return `<svg class="tiger-eyes" viewBox="0 0 188 40" aria-hidden="true"><g fill="#8cc7ff">${dots}</g><g class="native-face-features"><g fill="#fff">${stripes}${eyes}</g><g class="pupils" fill="#1a1714">${pupils}</g><g stroke="#fff" stroke-width="1.25" stroke-linecap="round">${whiskers}</g></g></svg>`;
   }
 
-  window.NocanPreview = { render, fit, mascot, track };
+  window.NocanPreview = {
+    render,
+    fit,
+    mascot,
+    track,
+    lyricWidth,
+    compactPreview,
+  };
 })();
