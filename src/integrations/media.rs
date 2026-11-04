@@ -141,7 +141,55 @@ fn poll_current_media(
     thumb_retry_count: &mut u32,
 ) -> windows::core::Result<MediaTrackInfo> {
     let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.get()?;
-    let session = manager.GetCurrentSession()?;
+    let session = match manager.GetCurrentSession() {
+        Ok(s) => {
+            let is_cur_playing = s
+                .GetPlaybackInfo()
+                .and_then(|info| info.PlaybackStatus())
+                .map(|st| st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
+                .unwrap_or(false);
+
+            if is_cur_playing {
+                s
+            } else if let Ok(sessions) = manager.GetSessions() {
+                let mut playing_session = None;
+                for other in sessions {
+                    if let Ok(info) = other.GetPlaybackInfo() {
+                        if let Ok(status) = info.PlaybackStatus() {
+                            if status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing {
+                                playing_session = Some(other);
+                                break;
+                            }
+                        }
+                    }
+                }
+                playing_session.unwrap_or(s)
+            } else {
+                s
+            }
+        }
+        Err(_) => {
+            let sessions = manager.GetSessions()?;
+            let mut found = None;
+            for s in &sessions {
+                if let Ok(info) = s.GetPlaybackInfo() {
+                    if let Ok(status) = info.PlaybackStatus() {
+                        if status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing {
+                            found = Some(s);
+                            break;
+                        }
+                    }
+                }
+            }
+            if let Some(s) = found {
+                s
+            } else if let Ok(first) = sessions.GetAt(0) {
+                first
+            } else {
+                return Err(windows::core::Error::empty());
+            }
+        }
+    };
 
     let source_app = session
         .SourceAppUserModelId()

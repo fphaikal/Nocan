@@ -19,7 +19,7 @@ pub struct DiscordConfig {
 impl Default for DiscordConfig {
     fn default() -> Self {
         Self {
-            api_url: "http://localhost:3000/api/activity/now-playing".to_string(),
+            api_url: "https://api.fph.my.id/api/activity/now-playing".to_string(),
             api_key: "".to_string(),
             discord_enabled: true,
             discord_client_id: String::new(),
@@ -69,7 +69,10 @@ impl DiscordRpcService {
         }
 
         let client_id = self.config.discord_client_id.clone();
+        let api_url = self.config.api_url.clone();
+        let api_key = self.config.api_key.clone();
         let configured_enabled = self.config.discord_enabled;
+        let sync_interval_seconds = self.config.sync_interval_seconds.max(3);
         let running = Arc::clone(&self.running);
 
         std::thread::spawn(move || {
@@ -79,6 +82,7 @@ impl DiscordRpcService {
             let _ = std::fs::write(log_dir.join("nocan_discord.log"), "Discord service thread started\n");
             let mut ipc = DiscordIpc::new(client_id);
             let mut last_track = String::new();
+            let mut last_sync = std::time::Instant::now() - Duration::from_secs(60);
             let mut preference_enabled = crate::config::AppSettings::load().music.discord_rpc_enabled;
 
             while running.load(Ordering::SeqCst) {
@@ -91,23 +95,35 @@ impl DiscordRpcService {
                 let enabled = configured_enabled && preference_enabled;
                 let current_sig = format!("{}:{}:{}:{}", track.title, track.artist, track.is_playing, enabled);
 
-                if current_sig != last_track {
-                    last_track = current_sig;
+                let track_changed = current_sig != last_track;
+                let periodic_sync = track.is_playing && !track.title.is_empty() && last_sync.elapsed() >= Duration::from_secs(sync_interval_seconds);
 
-                    if enabled && track.is_playing && !track.title.is_empty() {
+                if track_changed || periodic_sync {
+                    if track_changed {
+                        last_track = current_sig;
+                    }
+                    last_sync = std::time::Instant::now();
+
+                    if track.is_playing && !track.title.is_empty() {
                         let art_url = get_artwork_url(&track.title, &track.artist, &track.source_app);
-                        ipc.set_activity(
-                            Some(&track.title),
-                            Some(&track.artist),
-                            if track.album.is_empty() { None } else { Some(&track.album) },
-                            Some(&art_url),
-                            &track.source_app,
-                            track.duration_ms,
-                            track.position_ms,
-                            true,
-                        );
-                    } else {
-                        ipc.clear_activity();
+                        if enabled && track_changed {
+                            ipc.set_activity(
+                                Some(&track.title),
+                                Some(&track.artist),
+                                if track.album.is_empty() { None } else { Some(&track.album) },
+                                Some(&art_url),
+                                &track.source_app,
+                                track.duration_ms,
+                                track.position_ms,
+                                true,
+                            );
+                        }
+                        sync_to_api(&api_url, &api_key, Some(&track), Some(&art_url));
+                    } else if track_changed {
+                        if enabled {
+                            ipc.clear_activity();
+                        }
+                        sync_to_api(&api_url, &api_key, None, None);
                     }
                 }
 
@@ -360,4 +376,44 @@ fn get_source_icon(source_app: &str) -> (&'static str, &'static str) {
     } else {
         ("https://cdn-icons-png.flaticon.com/512/3844/3844724.png", "Media Player")
     }
+}
+
+fn sync_to_api(
+    api_url: &str,
+    api_key: &str,
+    track: Option<&crate::integrations::media::MediaTrackInfo>,
+    art_url: Option<&str>,
+) {
+    if api_url.is_empty() {
+        return;
+    }
+
+    let body = if let Some(t) = track {
+        serde_json::json!({
+            "source": t.source_app,
+            "title": t.title,
+            "artist": t.artist,
+            "album": t.album,
+            "album_art_url": art_url,
+            "is_playing": t.is_playing,
+            "duration_ms": t.duration_ms,
+            "position_ms": t.position_ms,
+            "activity_type": "music"
+        })
+    } else {
+        serde_json::json!({
+            "is_playing": false,
+            "activity_type": "music"
+        })
+    };
+
+    let mut req = ureq::post(api_url)
+        .timeout(Duration::from_secs(3))
+        .set("Content-Type", "application/json");
+
+    if !api_key.is_empty() {
+        req = req.set("x-api-key", api_key);
+    }
+
+    let _ = req.send_json(body);
 }
